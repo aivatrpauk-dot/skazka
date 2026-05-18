@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1B2A4E">
+<title>Сказка — персональные сказки на ночь для вашего ребёнка</title>
+<meta name="description" content="Тёплые сказки на ночь с именем вашего ребёнка, голосовой озвучкой и красивой обложкой. Готовая история за пару минут — прямо в Telegram.">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Сказка — персональные сказки на ночь">
+<meta property="og:description" content="Сказка с именем вашего ребёнка, озвучкой и обложкой. За пару минут, прямо в Telegram.">
+<meta property="og:image" content="/og.png">
+<meta property="og:locale" content="ru_RU">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Сказка — персональные сказки на ночь">
+<meta name="twitter:description" content="Сказка с именем вашего ребёнка, озвучкой и обложкой. За пару минут, прямо в Telegram.">
+<meta name="twitter:image" content="/og.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#0F1A36;
+  --bg-2:#1B2A4E;
+  --card:#22335C;
+  --card-2:#2A3E6E;
+  --line:rgba(255,255,255,.08);
+  --text:#EEE6D2;
+  --muted:#B7BFD6;
+  --cream:#F4E8CE;
+  --gold:#E9C46A;
+  --gold-2:#F4D58D;
+  --accent:#8EA8FF;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --r:18px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(233,196,106,.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 20%, rgba(142,168,255,.10), transparent 55%),
+    linear-gradient(180deg,#0F1A36 0%, #1B2A4E 100%);
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  line-height:1.5;
+  min-height:100vh;
+  padding-bottom:96px;
+}
+a{color:inherit}
+.wrap{max-width:560px;margin:0 auto;padding:20px 18px}
+header.top{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px;max-width:560px;margin:0 auto;
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px}
+.brand .logo{
+  width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,#E9C46A,#F4D58D);
+  display:grid;place-items:center;color:#1B2A4E;
+  box-shadow:0 6px 16px rgba(233,196,106,.25);
+}
+.brand span{font-size:17px}
+
+.hero{padding:24px 18px 8px}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--gold-2);
+  background:rgba(233,196,106,.10);
+  border:1px solid rgba(233,196,106,.25);
+  padding:6px 10px;border-radius:999px;
+  margin-bottom:14px;
+}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--gold)}
+h1{
+  font-size:30px;line-height:1.15;margin:0 0 12px;
+  font-weight:800;letter-spacing:-.4px;color:var(--cream);
+}
+h1 .em{
+  background:linear-gradient(90deg,#F4D58D,#E9C46A);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.lead{color:var(--muted);font-size:16px;margin:0 0 20px}
+
+.cta{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;padding:16px 18px;border-radius:14px;
+  background:linear-gradient(180deg,#F4D58D,#E9C46A);
+  color:#1B2A4E;font-weight:700;font-size:16px;
+  text-decoration:none;border:0;cursor:pointer;
+  box-shadow:0 10px 24px rgba(233,196,106,.25), inset 0 -2px 0 rgba(0,0,0,.08);
+  transition:transform .15s ease, box-shadow .15s ease;
+}
+.cta:hover{transform:translateY(-1px)}
+.cta:active{transform:translateY(0)}
+.cta svg{flex:0 0 auto}
+
+.cta-note{
+  text-align:center;font-size:13px;color:var(--muted);margin-top:10px;
+}
+
+.hero-card{
+  margin-top:22px;border-radius:var(--r);
+  background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  border:1px solid var(--line);
+  padding:14px;display:flex;gap:12px;align-items:center;
+  box-shadow:var(--shadow);
+}
+.hero-cover{
+  width:74px;height:74px;border-radius:14px;flex:0 0 auto;
+  background:
+    radial-gradient(circle at 30% 30%, #F4D58D 0%, #E9C46A 35%, transparent 36%),
+    linear-gradient(135deg,#2A3E6E,#1B2A4E);
+  position:relative;overflow:hidden;
+  border:1px solid var(--line);
+}
+.hero-cover::after{
+  content:"";position:absolute;inset:0;
+  background:
+    radial-gradient(1px 1px at 20% 60%, #fff, transparent),
+    radial-gradient(1px 1px at 70% 40%, #fff, transparent),
+    radial-gradient(1px 1px at 50% 80%, #fff, transparent),
+    radial-gradient(1px 1px at 85% 70%, #fff, transparent);
+  opacity:.7;
+}
+.hero-card .t{font-weight:600;color:var(--cream);font-size:14px}
+.hero-card .s{color:var(--muted);font-size:13px;margin-top:2px}
+
+section{padding:28px 18px;max-width:560px;margin:0 auto}
+h2{
+  font-size:22px;line-height:1.2;margin:0 0 14px;
+  font-weight:700;color:var(--cream);letter-spacing:-.2px;
+}
+.section-lead{color:var(--muted);font-size:14px;margin:0 0 18px}
+
+.steps{display:grid;gap:10px}
+.step{
+  display:flex;gap:12px;align-items:flex-start;
+  background:var(--card);border:1px solid var(--line);
+  border-radius:14px;padding:14px;
+}
+.step .n{
+  flex:0 0 auto;width:30px;height:30px;border-radius:10px;
+  background:rgba(233,196,106,.15);color:var(--gold-2);
+  display:grid;place-items:center;font-weight:700;font-size:14px;
+  border:1px solid rgba(233,196,106,.25);
+}
+.step .t{font-weight:600;color:var(--cream);font-size:15px}
+.step .s{color:var(--muted);font-size:13px;margin-top:2px}
+
+.features{display:grid;gap:10px;grid-template-columns:1fr}
+@media (min-width:480px){.features{grid-template-columns:1fr 1fr}}
+.feat{
+  background:var(--card);border:1px solid var(--line);
+  border-radius:14px;padding:14px;display:flex;gap:12px;align-items:flex-start;
+}
+.feat .ic{
+  flex:0 0 auto;width:34px;height:34px;border-radius:10px;
+  background:rgba(142,168,255,.12);color:var(--accent);
+  display:grid;place-items:center;border:1px solid rgba(142,168,255,.20);
+}
+.feat .t{font-weight:600;color:var(--cream);font-size:14px}
+.feat .s{color:var(--muted);font-size:13px;margin-top:2px}
+
+.plans{display:grid;gap:12px}
+.plan{
+  background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:16px;position:relative;
+}
+.plan.best{
+  background:linear-gradient(180deg, rgba(233,196,106,.10), rgba(233,196,106,.04));
+  border-color:rgba(233,196,106,.40);
+}
+.plan .badge{
+  position:absolute;top:-10px;right:14px;
+  background:linear-gradient(180deg,#F4D58D,#E9C46A);color:#1B2A4E;
+  font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;
+  letter-spacing:.3px;text-transform:uppercase;
+}
+.plan h3{margin:0;font-size:16px;color:var(--cream);font-weight:700}
+.plan .price{
+  margin:6px 0 10px;font-size:24px;font-weight:800;color:var(--cream);
+}
+.plan .price small{font-size:13px;color:var(--muted);font-weight:500}
+.plan ul{margin:0 0 12px;padding-left:18px;color:var(--muted);font-size:14px}
+.plan ul li{margin:4px 0}
+.plan .ghost{
+  display:flex;justify-content:center;align-items:center;
+  padding:12px;border-radius:12px;
+  background:transparent;border:1px solid var(--line);
+  color:var(--cream);text-decoration:none;font-weight:600;font-size:14px;
+}
+.plan.best .ghost{
+  background:linear-gradient(180deg,#F4D58D,#E9C46A);color:#1B2A4E;border:0;
+}
+
+.reviews{display:grid;gap:12px}
+.review{
+  background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:14px 16px;
+}
+.review p{margin:0;color:var(--cream);font-size:14px;line-height:1.55}
+.review .who{color:var(--muted);font-size:12px;margin-top:8px}
+.reviews-note{color:var(--muted);font-size:12px;margin:10px 2px 0}
+
+.final{
+  background:linear-gradient(180deg, rgba(233,196,106,.10), rgba(142,168,255,.06));
+  border:1px solid var(--line);border-radius:18px;padding:20px;text-align:center;
+}
+.final h2{margin-bottom:6px}
+.final p{color:var(--muted);font-size:14px;margin:0 0 14px}
+
+footer{
+  max-width:560px;margin:0 auto;padding:18px;color:var(--muted);
+  font-size:12px;line-height:1.6;border-top:1px solid var(--line);
+}
+footer a{color:var(--cream);text-decoration:underline;text-underline-offset:2px}
+
+.sticky{
+  position:fixed;left:0;right:0;bottom:0;
+  padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  background:linear-gradient(180deg, rgba(15,26,54,0) 0%, rgba(15,26,54,.85) 30%, rgba(15,26,54,.98) 100%);
+  z-index:50;
+}
+.sticky .cta{max-width:560px;margin:0 auto}
+
+@media (min-width:640px){
+  .sticky{display:none}
+  body{padding-bottom:40px}
+  h1{font-size:36px}
+}
+</style>
+</head>
+<body>
+
+<header class="top" role="banner">
+  <div class="brand" aria-label="Сказка">
+    <span class="logo" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" fill="#1B2A4E"/>
+      </svg>
+    </span>
+    <span>Сказка</span>
+  </div>
+  <a class="brand-link" href="https://t.me/{BOT_USERNAME}" aria-label="Открыть бот в Telegram" style="font-size:13px;color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:7px 10px;border-radius:10px">Открыть в Telegram</a>
+</header>
+
+<main>
+  <section class="hero" aria-labelledby="hero-title">
+    <span class="eyebrow"><span class="dot"></span> Бот в Telegram · для родителей</span>
+    <h1 id="hero-title">Сказки на ночь — <span class="em">с именем вашего ребёнка</span></h1>
+    <p class="lead">Уютная история с голосовой озвучкой и обложкой. Без рекламы, без скачиваний — прямо в чате с ботом.</p>
+
+    <a class="cta" href="https://t.me/{BOT_USERNAME}" aria-label="Создать сказку бесплатно в Telegram">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M21.5 3.5L2.5 11.2c-.9.4-.9 1.6 0 2l4.7 1.7 1.8 5.7c.3.9 1.4 1 1.9.3l2.5-3 4.8 3.5c.8.6 2 .2 2.2-.8l3.2-15.5c.2-1-.7-1.9-1.6-1.6z" fill="#1B2A4E"/>
+      </svg>
+      Создать сказку бесплатно
+    </a>
+    <p class="cta-note">Первые 3 сказки — бесплатно. Без карты.</p>
+
+    <div class="hero-card" aria-hidden="true">
+      <div class="hero-cover"></div>
+      <div>
+        <div class="t">«Маша и потерянная луна»</div>
+        <div class="s">3 мин · озвучка · обложка</div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="how">
+    <h2 id="how">Как это работает</h2>
+    <p class="section-lead">Три шага — и история готова к чтению перед сном.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <div>
+          <div class="t">Скажите имя и возраст</div>
+          <div class="s">Достаточно одного сообщения боту.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <div>
+          <div class="t">Выберите героя и сюжет</div>
+          <div class="s">Принцесса, космонавт, дракон или своя идея.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <div>
+          <div class="t">Получите готовую сказку</div>
+          <div class="s">Текст, обложка и аудио — за пару минут.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="inside">
+    <h2 id="inside">Что внутри</h2>
+    <div class="features">
+      <div class="feat">
+        <div class="ic" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M2 12h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <div class="t">Безлимит сказок</div>
+          <div class="s">Сколько угодно историй на одной подписке.</div>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0a3 3 0 1 0 3 3M5 9v3a7 7 0 0 0 14 0V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <div class="t">Живая озвучка</div>
+          <div class="s">Тёплый голос от ElevenLabs — приятно слушать.</div>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="9" r="2" stroke="currentColor" stroke-width="2"/><path d="M21 16l-5-5L5 21" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <div class="t">Обложка к каждой</div>
+          <div class="s">Картинка под сюжет — приятно сохранить.</div>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 5h16M4 12h16M4 19h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div>
+          <div class="t">Личный архив</div>
+          <div class="s">Все сказки сохраняются в чате — легко вернуться.</div>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2l3 6 6 .9-4.5 4.4 1 6.7L12 17l-5.5 3 1-6.7L3 8.9 9 8z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <div class="t">Без рекламы</div>
+          <div class="s">Ничего не отвлекает от ритуала сна.</div>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-12V5l-8-3-8 3v5c0 8 8 12 8 12z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <div class="t">Бережно к ребёнку</div>
+          <div class="s">Спокойные сюжеты, добрая концовка, без страшилок.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="plans">
+    <h2 id="plans">Тарифы</h2>
+    <p class="section-lead">Попробуйте бесплатно. Останетесь — выберите удобный вариант.</p>
+    <div class="plans">
+      <div class="plan">
+        <h3>Free</h3>
+        <div class="price">0 ₽ <small>· 3 сказки</small></div>
+        <ul>
+          <li>Полные сказки с текстом</li>
+          <li>Озвучка и обложка</li>
+          <li>Доступ к архиву</li>
+        </ul>
+        <a class="ghost" href="https://t.me/{BOT_USERNAME}" aria-label="Начать бесплатно">Начать бесплатно</a>
+      </div>
+
+      <div class="plan best">
+        <span class="badge">Популярное</span>
+        <h3>Подписка</h3>
+        <div class="price">490 ₽ <small>/ месяц</small></div>
+        <ul>
+          <li>Безлимит сказок</li>
+          <li>Приоритетная очередь</li>
+          <li>Отмена в один тап</li>
+        </ul>
+        <a class="ghost" href="https://t.me/{BOT_USERNAME}" aria-label="Оформить подписку">Оформить подписку</a>
+      </div>
+
+      <div class="plan">
+        <h3>Подарок</h3>
+        <div class="price">199 ₽ <small>· разовая покупка</small></div>
+        <ul>
+          <li>Одна большая сказка</li>
+          <li>Озвучка и обложка</li>
+          <li>Можно подарить другу</li>
+        </ul>
+        <a class="ghost" href="https://t.me/{BOT_USERNAME}" aria-label="Купить подарочную сказку">Сделать подарок</a>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="reviews">
+    <h2 id="reviews">Что говорят родители</h2>
+    <div class="reviews">
+      <div class="review">
+        <p>«Сын впервые сам попросил выключить мультики и слушать сказку про себя. Голос мягкий, история коротенькая — как раз до закрытия глаз.»</p>
+        <div class="who">— из отзывов тестовой группы</div>
+      </div>
+      <div class="review">
+        <p>«Удобно, что всё в Telegram — не нужно ставить ещё одно приложение. Дочка узнаёт своё имя в сказке и сразу включается.»</p>
+        <div class="who">— из отзывов тестовой группы</div>
+      </div>
+      <div class="review">
+        <p>«Получился маленький вечерний ритуал: чай, свет приглушили, включили сказку. Папа сначала смеялся, теперь слушает с нами.»</p>
+        <div class="who">— из отзывов тестовой группы</div>
+      </div>
+    </div>
+    <p class="reviews-note">Мы собираем мнения семей, которые тестируют бот.</p>
+  </section>
+
+  <section aria-labelledby="final">
+    <div class="final">
+      <h2 id="final">Сегодня вечером — уже своя сказка</h2>
+      <p>Откройте бот в Telegram и создайте первую историю бесплатно.</p>
+      <a class="cta" href="https://t.me/{BOT_USERNAME}" aria-label="Создать сказку бесплатно">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M21.5 3.5L2.5 11.2c-.9.4-.9 1.6 0 2l4.7 1.7 1.8 5.7c.3.9 1.4 1 1.9.3l2.5-3 4.8 3.5c.8.6 2 .2 2.2-.8l3.2-15.5c.2-1-.7-1.9-1.6-1.6z" fill="#1B2A4E"/>
+        </svg>
+        Создать сказку бесплатно
+      </a>
+    </div>
+  </section>
+</main>
+
+<footer role="contentinfo">
+  <div>ИП Иванов И. И. · ОГРНИП 000000000000000 · ИНН 000000000000</div>
+  <div>Поддержка: <a href="mailto:hello@example.com">hello@example.com</a></div>
+  <div style="margin-top:6px">
+    <a href="#privacy">Политика обработки персональных данных</a> · <a href="#privacy">Согласие на обработку (152-ФЗ)</a>
+  </div>
+  <div style="margin-top:8px;opacity:.7">Персональные сказки создаются с применением технологии искусственного интеллекта.</div>
+</footer>
+
+<div class="sticky" aria-hidden="false">
+  <a class="cta" href="https://t.me/{BOT_USERNAME}" aria-label="Открыть бот и создать сказку">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M21.5 3.5L2.5 11.2c-.9.4-.9 1.6 0 2l4.7 1.7 1.8 5.7c.3.9 1.4 1 1.9.3l2.5-3 4.8 3.5c.8.6 2 .2 2.2-.8l3.2-15.5c.2-1-.7-1.9-1.6-1.6z" fill="#1B2A4E"/>
+    </svg>
+    Создать сказку бесплатно
+  </a>
+</div>
+
+</body>
+</html>

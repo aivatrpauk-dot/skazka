@@ -1,0 +1,50 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./cache:/app/cache
+    networks: [skazka]
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: skazka
+      POSTGRES_PASSWORD: skazka
+      POSTGRES_DB: skazka
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skazka"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks: [skazka]
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on: [db]
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        TS=$$(date +%Y%m%d_%H%M);
+        PGPASSWORD=skazka pg_dump -h db -U skazka skazka | gzip > /backups/skazka_$$TS.sql.gz;
+        find /backups -name "skazka_*.sql.gz" -mtime +14 -delete;
+        sleep 21600;
+      done'
+    networks: [skazka]
+
+volumes:
+  pgdata:
+
+networks:
+  skazka:
+    driver: bridge
