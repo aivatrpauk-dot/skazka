@@ -30,16 +30,24 @@ logger = logging.getLogger(__name__)
 ELEVENLABS_BASE = "https://api.elevenlabs.io/v1/text-to-speech"
 
 # Громкость фоновой музыки относительно голоса (в децибелах).
-# -22 dB = музыка очень тихим фоном, голос явно главный (перцептивно ~в 2 раза
-# тише голоса). Хорошо для сказок-засыпашек: ребёнок концентрируется на голосе,
-# музыка работает как уютная атмосфера, не отвлекая.
-# Если хочется чуть громче (для бодрых сказок) — поставь -18 или -16.
-BACKGROUND_DB = -22
+# Шкала перцептивная:
+#  -16 dB = музыка слышна, чувствуется как «атмосфера сцены»
+#  -19 dB = музыка тихим фоном, голос явно главный (наш дефолт)
+#  -22 dB = очень тихо, музыка почти за границей восприятия
+#  -25 dB = практически не слышно
+# Подбирается на слух под конкретный голос ElevenLabs.
+BACKGROUND_DB = -19
 
 # Fade-in голоса — короткий мягкий вход
 FADE_IN_SEC = 2
-# Fade-out голоса — на самом конце, чтобы не обрывалось резко
-FADE_OUT_SEC = 3
+# ВАЖНО: голос НЕ ЗАТУХАЕТ в конце. Раньше был fade-out, но из-за него
+# финальная фраза «Сладких снов тебе, имя» звучала роботизированно — она
+# попадала в зону затухания. Теперь голос идёт на полной громкости
+# до самого последнего слова, а угасает только фоновая музыка.
+
+# Замедление голоса (ffmpeg atempo). 1.0 = обычный темп, 0.92 = на 8% медленнее.
+# Для сказок на ночь — медленнее лучше, ребёнок успевает «вжиться» в фразу.
+VOICE_TEMPO = 0.92
 
 # Музыка плавно угасает на этой ДОЛЕ от общей длительности.
 # 0.5 = последняя половина сказки музыка постепенно уходит в тишину.
@@ -108,17 +116,22 @@ async def _mix_with_ambient(voice_path: Path, ambient_path: Path, out_path: Path
         music_fade_out_duration = duration * MUSIC_FADE_OUT_FRACTION
         music_fade_out_start = duration - music_fade_out_duration
 
-    voice_fade_out_start = max(0, duration - FADE_OUT_SEC)
-
     cmd = [
         "ffmpeg", "-y",
         "-i", str(voice_path),
         "-stream_loop", "-1", "-i", str(ambient_path),
         "-filter_complex",
-        # Голос: короткий fade-in + fade-out в самом конце
-        f"[0:a]afade=t=in:st=0:d={FADE_IN_SEC},"
-        f"afade=t=out:st={voice_fade_out_start}:d={FADE_OUT_SEC}[voice];"
-        # Музыка: понижаем громкость, плавный вход, долгое угасание
+        # Голос:
+        # 1) atempo — замедляем на ~8% для уютного сказочного темпа
+        # 2) loudnorm — выравниваем громкость до -14 LUFS (Spotify/Apple
+        #    Podcasts standard), голос всегда стабильно слышен
+        # 3) afade=t=in — короткий мягкий вход (2 сек)
+        # БЕЗ fade-out на голосе! Финальная фраза «Сладких снов» должна
+        # звучать на полной громкости и тёплой интонации, без затухания.
+        f"[0:a]atempo={VOICE_TEMPO},"
+        f"loudnorm=I=-14:TP=-1.5:LRA=11,"
+        f"afade=t=in:st=0:d={FADE_IN_SEC}[voice];"
+        # Музыка: понижаем громкость, плавный вход, долгое угасание к концу
         f"[1:a]volume={BACKGROUND_DB}dB,"
         f"afade=t=in:st=0:d={music_fade_in},"
         f"afade=t=out:st={music_fade_out_start}:d={music_fade_out_duration}[bg];"
@@ -174,9 +187,14 @@ async def synthesize_speech(text: str, voice_id: str | None = None) -> Path | No
             "text": text,
             "model_id": config.elevenlabs_model,
             "voice_settings": {
-                "stability": 0.55,
+                # stability ниже → голос более живой, с интонацией
+                # (но не настолько низко, чтобы «трясло»). 0.45 — для сказок.
+                "stability": 0.45,
                 "similarity_boost": 0.75,
-                "style": 0.25,
+                # style выше → больше эмоциональной выразительности,
+                # «с любовью и теплом», особенно на ласковых фразах
+                # вроде «Сладких снов, малыш».
+                "style": 0.5,
                 "use_speaker_boost": True,
             },
             "output_format": "mp3_44100_128",
