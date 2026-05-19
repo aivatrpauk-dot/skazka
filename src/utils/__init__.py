@@ -1,5 +1,7 @@
 from .text import (
     normalize_name,
+    sanitize_user_text,
+    strip_emo_markers,
     # Для имён (petrovich)
     genitive,
     dative,
@@ -16,6 +18,8 @@ from .text import (
 
 __all__ = [
     "normalize_name",
+    "sanitize_user_text",
+    "strip_emo_markers",
     "genitive",
     "dative",
     "accusative",

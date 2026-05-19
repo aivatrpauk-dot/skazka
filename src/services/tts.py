@@ -24,6 +24,7 @@ from pathlib import Path
 import httpx
 
 from ..config import config
+from ..utils.text import strip_emo_markers
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +162,13 @@ async def synthesize_speech(text: str, voice_id: str | None = None) -> Path | No
     if not config.elevenlabs_api_key:
         logger.warning("ELEVENLABS_API_KEY не задан — пропускаю озвучку")
         return None
+
+    # ElevenLabs Turbo v2_5 (модель Mariia) НЕ поддерживает inline-теги
+    # вроде [sighs], [laughs softly] — он читает их буквально как слово
+    # «сайз» перед «вздохнула». Поэтому ВСЕГДА стрипаем маркеры
+    # перед отправкой в TTS. Если в будущем перейдём на eleven_v3,
+    # который их понимает — этот шаг можно убрать.
+    text = strip_emo_markers(text)
 
     voice = voice_id or config.elevenlabs_voice_id
     digest = hashlib.sha256(f"{voice}:{config.elevenlabs_model}:{text}".encode()).hexdigest()[:32]

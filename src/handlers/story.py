@@ -31,6 +31,7 @@ from ..utils import (
     hero_instrumental,
     instrumental,
     normalize_name,
+    strip_emo_markers,
 )
 
 logger = logging.getLogger(__name__)
@@ -321,9 +322,12 @@ async def cb_length(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
         except Exception as e:
             logger.warning("Картинка не сгенерилась: %s", e)
 
-    # 2) Текст — основное содержимое. Разбиваем на части, если длиннее 4000 символов.
+    # 2) Текст — основное содержимое. Юзеру отдаём БЕЗ эмо-маркеров
+    # ([laughs softly] и т.п. — они только для озвучки ElevenLabs).
+    # Разбиваем на части, если длиннее 4000 символов.
     await bot.send_chat_action(call.message.chat.id, "typing")
-    for part in _split_for_telegram(text):
+    display_text = strip_emo_markers(text)
+    for part in _split_for_telegram(display_text):
         await call.message.answer(part)
 
     # 3) Аудио — финальный аккорд, можно слушать ребёнку перед сном
@@ -361,7 +365,10 @@ async def cb_length(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
             hero=data["hero"],
             theme=data["theme_key"],
             length=length,
-            text=text,
+            # В БД сохраняем «чистый» текст, без эмо-маркеров — он используется
+            # для /library и как summary-контекст для следующих сказок. Аудио
+            # уже создано с маркерами выше, повторно генерить не нужно.
+            text=display_text,
             audio_path=str(audio_path) if audio_path else None,
             image_path=str(image_path) if image_path else None,
             is_paid_quality=full_quality,

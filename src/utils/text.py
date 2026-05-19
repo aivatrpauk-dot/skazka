@@ -128,6 +128,29 @@ import re as _re
 _SAFE_INPUT_RE = _re.compile(r"[^\w\sа-яА-ЯёЁ\-.,!?'’ʼ]", flags=_re.UNICODE)
 
 
+# Маркеры эмоций для ElevenLabs ([laughs softly], [sighs], [whispers] и т.п.)
+# Gemini вставляет их в текст сказки, чтобы озвучка звучала живо.
+# Пользователю показываем БЕЗ маркеров — они нужны только для TTS.
+_EMO_MARKER_RE = _re.compile(r"\[[^\]\n]{1,40}\]")
+
+
+def strip_emo_markers(text: str) -> str:
+    """Удаляет [laughs softly], [sighs], [whispers], [warmly] и подобные
+    маркеры из текста перед отображением пользователю. Возвращает
+    «человеческий» текст. Используется только для UI/Telegram, для TTS
+    оставляем оригинал с маркерами."""
+    if not text:
+        return text
+    # Убираем маркеры
+    cleaned = _EMO_MARKER_RE.sub("", text)
+    # Схлопываем двойные пробелы и пробелы перед знаками препинания
+    cleaned = _re.sub(r"\s+([,.!?;:])", r"\1", cleaned)
+    cleaned = _re.sub(r" {2,}", " ", cleaned)
+    # Удаляем пустые строки (если маркер занимал всю строку)
+    cleaned = _re.sub(r"\n[ \t]+\n", "\n\n", cleaned)
+    return cleaned.strip()
+
+
 def sanitize_user_text(text: str, max_len: int = 64) -> str:
     """Очистка пользовательского ввода перед подстановкой в LLM-промпт
     и записью в БД.

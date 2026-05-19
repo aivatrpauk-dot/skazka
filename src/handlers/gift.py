@@ -259,9 +259,11 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
     except Exception as e:
         logger.warning("Подарочная картинка не вышла: %s", e)
 
-    # 2) Текст
+    # 2) Текст — отдаём БЕЗ эмо-маркеров (они только для озвучки)
     from .story import _split_for_telegram
-    for part in _split_for_telegram(text):
+    from ..utils import strip_emo_markers
+    display_text = strip_emo_markers(text)
+    for part in _split_for_telegram(display_text):
         await bot.send_message(chat_id, part)
 
     # 3) Аудио
@@ -288,7 +290,8 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
                 hero=params["hero"],
                 theme=params["theme_key"],
                 length="medium",
-                text=text,
+                # В БД сохраняем уже без маркеров (для /library)
+                text=display_text,
                 is_paid_quality=True,
                 is_gift=True,
                 gift_recipient_name=params["recipient_name"],
