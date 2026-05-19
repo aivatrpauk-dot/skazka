@@ -209,9 +209,12 @@ async def m_custom_hero(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     if not data.get("_await_custom_hero"):
         return
-    hero = (message.text or "").strip()[:48]
-    if not hero:
-        await message.answer("Напишите имя или название героя, до 48 символов.")
+    from ..utils.text import sanitize_user_text
+    # Очищаем от спецсимволов, обрезаем до 48, схлопываем пробелы
+    hero = sanitize_user_text(message.text or "", max_len=48)
+    if not hero or len(hero) < 2:
+        await message.answer("Напишите имя или название героя, до 48 символов "
+                             "(только буквы, цифры, пробелы, дефисы).")
         return
     await state.update_data(hero=hero, _await_custom_hero=False)
     await message.answer("Какая тема сказки?", reply_markup=theme_kb())
@@ -235,6 +238,15 @@ async def cb_length(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     length = call.data.split(":", 1)[1]
     if length not in ("short", "medium"):
         return
+
+    # Rate-limit перед дорогими API-вызовами (Gemini + FAL + ElevenLabs).
+    # Защита от спама бесплатного триала и просто слишком частых нажатий.
+    from ..services import check_story_limit
+    allowed, msg = check_story_limit(call.from_user.id)
+    if not allowed:
+        await call.answer(msg or "Слишком быстро", show_alert=True)
+        return
+
     data = await state.get_data()
     await state.clear()
 

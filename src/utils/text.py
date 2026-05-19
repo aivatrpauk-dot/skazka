@@ -121,6 +121,33 @@ def normalize_name(name: str) -> str:
     return "-".join(parts)
 
 
+# Безопасные символы: буквы (русские/латин), цифры, пробелы, дефисы и
+# базовая пунктуация. Всё остальное (HTML, JSON, спецсимволы,
+# prompt-injection токены вроде ``` или """) вырезаем.
+import re as _re
+_SAFE_INPUT_RE = _re.compile(r"[^\w\sа-яА-ЯёЁ\-.,!?'’ʼ]", flags=_re.UNICODE)
+
+
+def sanitize_user_text(text: str, max_len: int = 64) -> str:
+    """Очистка пользовательского ввода перед подстановкой в LLM-промпт
+    и записью в БД.
+
+    Что делает:
+    - Обрезает длину до `max_len` (защита от 5000-символьной «инструкции»
+      для LLM, переданной как имя ребёнка)
+    - Удаляет управляющие/спецсимволы, оставляет буквы / цифры / пробелы /
+      тире / базовую пунктуацию
+    - Схлопывает многократные пробелы
+    - Trim'ит края
+
+    Применять к: child_name, hero, theme, кастомному посланию подарка."""
+    if not text:
+        return ""
+    cleaned = _SAFE_INPUT_RE.sub("", text)
+    cleaned = " ".join(cleaned.split())
+    return cleaned[:max_len].strip()
+
+
 def _decline(name: str, case: Case, gender: Gender | None = None) -> str:
     """Склоняет имя. Сначала petrovich (он точнее для редких имён вроде Илья,
     Никита, Лука), потом, если результат не изменился, — pymorphy3 как fallback

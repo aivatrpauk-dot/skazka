@@ -23,8 +23,8 @@ import httpx
 from ..config import config
 from ..prompts import (
     FALLBACK_SCENE_TEMPLATE,
-    IMAGE_PROMPT_TEMPLATE,
     THEME_TO_EN,
+    random_image_style,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,12 @@ async def generate_cover(
     if not scene_description:
         scene_description = FALLBACK_SCENE_TEMPLATE.format(hero=hero, theme_en=theme_en)
 
-    prompt = IMAGE_PROMPT_TEMPLATE.format(scene_description=scene_description)
+    # Случайно выбираем один из 7 стилей. Родители не знают, какой получат —
+    # это часть «магии» каждой сказки. См. prompts.IMAGE_STYLES.
+    style_id, style_prompt = random_image_style()
+    prompt = f"{style_prompt} Scene to depict: {scene_description}"
+    logger.info("Image style chosen: %s", style_id)
+
     out = _cache_path(prompt)
     if out.exists():
         return out

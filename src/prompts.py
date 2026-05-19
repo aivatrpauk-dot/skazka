@@ -117,27 +117,117 @@ HERO_QUICK_PICKS = [
 # STYLE — постоянная часть про эстетику.
 # SCENE — извлекается из конкретной сказки через extract_scene() в llm.py.
 
-IMAGE_STYLE_PROMPT = (
-    "Children's naive crayon and watercolor drawing as if drawn by a 5-year-old, "
-    "flat 2D perspective deliberately broken, bold wax-pastel outlines, "
-    "magical impossible elements (cat with butterfly wings, chair with little legs, "
-    "sun wearing sunglasses, stars with happy faces, floating houses on clouds), "
-    "bright cheerful colors with crayon texture, soft pencil shading, "
-    "warm pinks, dreamy blues, sunny yellows, mint greens, "
-    "visible paper texture, slightly off-centered composition, "
-    "joyful imperfection, magical realism in a kindergarten artwork style, "
-    "the kind of drawing a parent would proudly pin on the fridge. "
-    "No text, no letters, no signatures, no logos."
+# Палитра стилей. Для каждой сказки случайно выбирается один — родители не
+# знают, какая обложка будет, это часть «магии» сюрприза. У каждого стиля
+# своя эмоция и эстетика, но все безопасны для детей 3-8 лет.
+#
+# Если хочется добавить ещё стиль — просто допиши кортеж в IMAGE_STYLES.
+# Если хочется убрать какой-то — закомментируй.
+#
+# Совет: НЕ ставь меньше 3 стилей, иначе сюрприза не будет.
+
+IMAGE_STYLES: tuple[tuple[str, str], ...] = (
+    # 1. Наивный детский — наш изначальный, как будто дошкольник нарисовал
+    (
+        "crayon_kindergarten",
+        "Children's naive crayon and watercolor drawing as if drawn by a 5-year-old, "
+        "flat 2D perspective deliberately broken, bold wax-pastel outlines, "
+        "magical impossible elements (cat with butterfly wings, chair with little legs, "
+        "sun wearing sunglasses, stars with happy faces, floating houses on clouds), "
+        "bright cheerful colors with crayon texture, soft pencil shading, "
+        "warm pinks, dreamy blues, sunny yellows, mint greens, "
+        "visible paper texture, slightly off-centered composition, "
+        "joyful imperfection, magical realism in a kindergarten artwork style. "
+        "No text, no letters, no signatures, no logos."
+    ),
+    # 2. Акварель — лёгкий, мечтательный, в духе классической детской книги
+    (
+        "watercolor_storybook",
+        "Soft hand-painted watercolor children's book illustration, "
+        "delicate brush strokes, translucent washes of color, light pencil sketch lines, "
+        "pastel palette with warm cream paper showing through, "
+        "whimsical fairy-tale atmosphere, cozy storybook feel, "
+        "soft golden afternoon light, dreamy diffused edges, "
+        "in the tradition of European watercolor children's book art. "
+        "No text, no letters, no signatures, no logos."
+    ),
+    # 3. Классическая русская сказка (Билибин-style)
+    (
+        "classical_russian",
+        "Classical Russian fairy tale book illustration in the tradition of "
+        "Ivan Bilibin and Soviet children's books, rich detailed colored pencil "
+        "and gouache work, ornamental decorative borders inspired by Russian folk art, "
+        "warm earthy palette with deep reds, golds, forest greens and royal blues, "
+        "detailed costumes and folk-tale architecture, expressive characters, "
+        "majestic and serene mood. "
+        "No text, no letters, no signatures, no logos."
+    ),
+    # 4. Современная глянцевая детская книга (Disney/Pixar-style 2D)
+    (
+        "glossy_modern",
+        "Modern glossy children's book illustration with smooth digital painting, "
+        "rounded soft shapes, vibrant saturated colors, polished detail, "
+        "warm rim lighting and gentle ambient highlights, expressive cute characters "
+        "with big friendly eyes, magical sparkles, lush nature backgrounds, "
+        "professional contemporary children's book quality, "
+        "in the style of award-winning modern picture books. "
+        "No text, no letters, no signatures, no logos."
+    ),
+    # 5. Карандашный с подкраской — мягкий, школьно-уютный
+    (
+        "pencil_softcolor",
+        "Hand-drawn pencil sketch with delicate soft color washes, "
+        "visible graphite lines and cross-hatching, gentle muted color palette, "
+        "warm beige paper texture, cozy fairy-tale atmosphere, "
+        "intimate diary-like feel, hand-crafted artisan quality, "
+        "in the tradition of European children's storybook illustration. "
+        "No text, no letters, no signatures, no logos."
+    ),
+    # 6. Цифровой стилизованный — модный, минимализм с настроением
+    (
+        "digital_stylized",
+        "Modern stylized digital children's illustration with bold simplified shapes, "
+        "limited muted color palette, soft texture overlays mimicking screen-print, "
+        "moody atmospheric lighting, sophisticated composition, "
+        "characters with expressive minimalist features, "
+        "in the style of contemporary award-winning indie picture books "
+        "like those of Oliver Jeffers or Beatrice Alemagna. "
+        "No text, no letters, no signatures, no logos."
+    ),
+    # 7. Мозаика / витраж — нарядно и волшебно
+    (
+        "stained_glass",
+        "Whimsical stained-glass mosaic children's illustration, "
+        "bold dark outlines dividing bright translucent color panels, "
+        "jewel tones — emerald, ruby, sapphire, amber, "
+        "fairy-tale ornamental composition, magical glowing light effect, "
+        "decorative border patterns, festive and majestic mood. "
+        "No text, no letters, no signatures, no logos."
+    ),
 )
 
+
+def random_image_style() -> tuple[str, str]:
+    """Случайно выбирает стиль из палитры. Возвращает (id, prompt).
+    `id` используется для логов — чтобы видеть, какой стиль выбрался на каждую сказку.
+    `prompt` подставляется в IMAGE_PROMPT_TEMPLATE."""
+    import random as _random
+    return _random.choice(IMAGE_STYLES)
+
+
 # Финальный промпт собирается так:
-# IMAGE_STYLE_PROMPT + " Scene to depict: " + scene_description
+# style_prompt + " Scene to depict: " + scene_description
 #
 # Сцена приходит из extract_scene() — одно предложение по-английски про ключевой
 # момент сказки, что-то вроде: "A small girl named Lisa builds a glowing tower
 # of cubes with a silver robot named Bim in a sunset-lit room."
 
-# Шаблон-fallback если scene_description не удалось извлечь
+# Шаблон-fallback если scene_description не удалось извлечь — используется
+# стиль по умолчанию (первый из палитры). Реальный промпт сборки картинки
+# теперь делается в image.py через random_image_style(), а не через этот
+# IMAGE_PROMPT_TEMPLATE — он сохранён для backward-compat если где-то ещё
+# используется.
+IMAGE_STYLE_PROMPT = IMAGE_STYLES[0][1]  # legacy alias на «детский мелковый»
 IMAGE_PROMPT_TEMPLATE = (
     IMAGE_STYLE_PROMPT
     + " Scene to depict: {scene_description}"

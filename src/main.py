@@ -19,7 +19,7 @@ from .bot_setup import setup_bot_profile
 from .config import config
 from .db import Session, Story, SubscriptionStatus, User, init_db
 from .handlers import setup_routers
-from .services import create_recurring_payment
+from .services import attribute_payment_to_partner, create_recurring_payment
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,11 @@ async def renewal_worker(bot: Bot) -> None:
                     )
                 )).scalars().all()
             for u in rows:
-                ok = await create_recurring_payment(u)
+                ok, payment, fresh_u = await create_recurring_payment(u)
+                if ok and payment and fresh_u:
+                    # Регистрируем партнёрскую комиссию (если применимо).
+                    # Идемпотентно — повторный вызов на тот же payment_id не дублирует.
+                    await attribute_payment_to_partner(payment, fresh_u, bot)
                 if not ok:
                     with suppress(Exception):
                         await bot.send_message(
@@ -116,6 +120,25 @@ async def _clean_orphan_cache() -> None:
         )
 
 
+async def _retry(fn, *, name: str, attempts: int = 5, base_delay: int = 5) -> None:
+    """Выполняет async-функцию с экспоненциальным бэк-оффом.
+    После исчерпания попыток — пробрасывает последнее исключение,
+    чтобы Docker рестартовал контейнер (последняя линия защиты)."""
+    last_exc: Exception | None = None
+    for i in range(attempts):
+        try:
+            await fn()
+            return
+        except Exception as e:
+            last_exc = e
+            delay = min(60, base_delay * (2 ** i))
+            logger.warning("%s failed (attempt %d/%d): %s — retry in %ds",
+                           name, i + 1, attempts, e, delay)
+            await asyncio.sleep(delay)
+    if last_exc:
+        raise last_exc
+
+
 async def main() -> None:
     logging.basicConfig(
         level=getattr(logging, config.log_level.upper(), logging.INFO),
@@ -125,7 +148,8 @@ async def main() -> None:
     if config.sentry_dsn:
         sentry_sdk.init(dsn=config.sentry_dsn, traces_sample_rate=0.05)
 
-    await init_db()
+    # init_db с ретраем — db может ещё подниматься
+    await _retry(init_db, name="init_db", attempts=10, base_delay=3)
 
     bot = Bot(
         token=config.bot_token,
@@ -136,12 +160,29 @@ async def main() -> None:
 
     # Применяем настройки профиля (name, description, commands) при каждом старте.
     # Аватарку всё равно ставить руками в @BotFather: /setuserpic
-    await setup_bot_profile(bot)
+    # Ретраим — на холодном старте Telegram может быть недоступен пару секунд.
+    await _retry(lambda: setup_bot_profile(bot), name="setup_bot_profile",
+                 attempts=10, base_delay=5)
 
     asyncio.create_task(renewal_worker(bot))
     asyncio.create_task(cache_cleaner_worker())
-    logger.info("Bot starting…")
-    await dp.start_polling(bot)
+
+    # Основной polling-цикл с авто-восстановлением.
+    # aiogram сам ретраит сетевые ошибки внутри long-polling, но если что-то
+    # совсем экстремальное (например, токен временно отвалился, прокси упал) —
+    # перехватим тут и попробуем ещё раз через 30 сек. Если уж совсем плохо —
+    # Docker рестартанёт контейнер (restart: unless-stopped).
+    while True:
+        try:
+            logger.info("Bot starting polling…")
+            await dp.start_polling(bot)
+            logger.info("Polling stopped gracefully")
+            break
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception as e:
+            logger.exception("Polling crashed, restart in 30s: %s", e)
+            await asyncio.sleep(30)
 
 
 if __name__ == "__main__":

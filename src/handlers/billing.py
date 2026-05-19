@@ -11,7 +11,13 @@ from sqlalchemy import select
 from ..config import config
 from ..db import PaymentKind, Referral, Session, SubscriptionStatus, User
 from ..keyboards import main_menu_kb, paywall_kb
-from ..services import create_gift_invoice, create_subscription_invoice, process_successful_payment
+from ..services import (
+    attribute_payment_to_partner,
+    compute_subscription_price,
+    create_gift_invoice,
+    create_subscription_invoice,
+    process_successful_payment,
+)
 
 logger = logging.getLogger(__name__)
 router = Router(name="billing")
@@ -29,14 +35,26 @@ PLANS_TEXT = (
     "• Отмена в любой момент\n\n"
     "🎁 <b>Подарок близким — 199 ₽</b>\n"
     "Одна персональная сказка под имя ребёнка, с озвучкой и обложкой. "
-    "Получаете ссылку — отправляете близким."
+    "Получаете ссылку — отправляете близким.\n\n"
+    "<i>Нажимая «Подписаться» или «В подарок», вы принимаете публичную оферту "
+    "и даёте согласие на обработку персональных данных. Подробно — /legal</i>"
 )
 
 
 @router.callback_query(F.data == "bill:plans")
 async def cb_plans(call: CallbackQuery) -> None:
+    # Если юзер пришёл от партнёра и ещё не платил — показываем баннер со скидкой
+    amount, partner, discount_pct = await compute_subscription_price(call.from_user.id)
+    banner = ""
+    if discount_pct > 0 and partner is not None:
+        banner = (
+            f"🎁 <b>Спецпредложение от {partner.name}</b>\n"
+            f"Первый месяц подписки — <b>{amount/100:.0f} ₽</b> "
+            f"(вместо {config.price_sub_kopecks/100:.0f} ₽, экономия −{discount_pct}%).\n"
+            f"Действует на ваш первый платёж. Дальше — обычная цена 490 ₽/мес.\n\n"
+        )
     await call.message.edit_text(
-        PLANS_TEXT.format(free=config.free_story_limit),
+        banner + PLANS_TEXT.format(free=config.free_story_limit),
         reply_markup=paywall_kb(),
     )
     await call.answer()
@@ -44,7 +62,25 @@ async def cb_plans(call: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "bill:sub")
 async def cb_sub(call: CallbackQuery, bot: Bot) -> None:
+    """Сразу открываем оплату. Нажатие кнопки «Подписаться» = конклюдентное
+    согласие с офертой и политикой (ст. 438 ГК РФ). Юзер уже видит мелкую
+    italic-строку про согласие в окне «Тарифы» (см. PLANS_TEXT).
+
+    Записываем `tos_accepted_at` на этом этапе как audit-trail."""
+    import datetime as dt
+
     await call.answer()
+
+    async with Session() as s:
+        u = (
+            await s.execute(select(User).where(User.telegram_id == call.from_user.id))
+        ).scalar_one_or_none()
+        if u and not u.tos_accepted_at:
+            u.tos_accepted_at = dt.datetime.now(dt.timezone.utc)
+            await s.commit()
+            logger.info("TOS accepted (implicit by 'Подписаться') user=%s at %s",
+                        call.from_user.id, u.tos_accepted_at)
+
     await create_subscription_invoice(bot, call.message.chat.id, call.from_user.id)
 
 
@@ -56,13 +92,16 @@ async def pre_checkout(query: PreCheckoutQuery, bot: Bot) -> None:
 @router.message(F.successful_payment)
 async def on_paid(message: Message, bot: Bot) -> None:
     sp = message.successful_payment
-    kind, user = await process_successful_payment(
+    kind, user, payment = await process_successful_payment(
         telegram_user_id=message.from_user.id,
         payload=sp.invoice_payload,
         total_amount=sp.total_amount,
         telegram_charge_id=sp.telegram_payment_charge_id,
         provider_charge_id=sp.provider_payment_charge_id,
     )
+    # Партнёрская комиссия — если юзер пришёл от партнёра, начислим и уведомим его.
+    # Идемпотентно (commit по unique payment_id).
+    await attribute_payment_to_partner(payment, user, bot)
     # Бонус приглашающему: 50% от первого платежа (через bonus_stories для простоты — 5 сказок)
     async with Session() as s:
         ref = (
