@@ -48,9 +48,10 @@ class Config:
     gemini_model_paid: str = field(default_factory=lambda: _env("GEMINI_MODEL_PAID", "gemini-2.5-flash"))
 
     elevenlabs_api_key: str = field(default_factory=lambda: _env("ELEVENLABS_API_KEY", ""))
-    # Мариина — русская женщина ~30 лет, мягкий «мамский» голос как у доброй воспитательницы.
-    # Идеально для детских сказок на ночь по нашим тестам. Можно переопределить в .env.
-    elevenlabs_voice_id: str = field(default_factory=lambda: _env("ELEVENLABS_VOICE_ID", "WfExDXCt2GBg6MI5KjQk"))
+    # Русский нежный голос — живой, выразительный, чуть «мультяшный» в хорошем смысле:
+    # передаёт эмоции через интонацию, а не «дикторски-монотонно». Лучше зашёл по тестам,
+    # чем «правильный мамский» Mariia (WfExDXCt2GBg6MI5KjQk) — тот красивый, но каменный.
+    elevenlabs_voice_id: str = field(default_factory=lambda: _env("ELEVENLABS_VOICE_ID", "GN4wbsbejSnGSa1AzjH5"))
     elevenlabs_model: str = field(default_factory=lambda: _env("ELEVENLABS_MODEL", "eleven_turbo_v2_5"))
 
     fal_api_key: str = field(default_factory=lambda: _env("FAL_KEY", ""))
