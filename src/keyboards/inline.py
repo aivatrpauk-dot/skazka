@@ -41,21 +41,32 @@ def age_kb() -> InlineKeyboardMarkup:
 
 
 def hero_kb() -> InlineKeyboardMarkup:
+    """Клавиатура выбора героя. Эмодзи только в LABEL кнопки —
+    в callback_data идёт чистое имя, чтоб не таскать эмодзи по БД и промптам."""
     kb = InlineKeyboardBuilder()
-    for h in HERO_QUICK_PICKS:
-        kb.button(text=h, callback_data=f"hero:{h}")
-    kb.button(text="Свой вариант", callback_data="hero:custom")
+    for name, emoji in HERO_QUICK_PICKS.items():
+        kb.button(text=f"{emoji} {name}", callback_data=f"hero:{name}")
+    kb.button(text="✏️ Свой вариант", callback_data="hero:custom")
     kb.button(text="◀ Назад", callback_data="story:cancel")
     kb.adjust(2, 2, 2, 2, 2, 1, 1)
     return kb.as_markup()
 
 
 def theme_kb() -> InlineKeyboardMarkup:
+    """Клавиатура выбора темы. 14 тем + кнопка «Назад» → 7 рядов по 2 + 1.
+    Автоматически адаптируется если добавятся новые темы в THEME_CHOICES."""
     kb = InlineKeyboardBuilder()
     for key, (label, _) in THEME_CHOICES.items():
         kb.button(text=label, callback_data=f"theme:{key}")
     kb.button(text="◀ Назад", callback_data="story:cancel")
-    kb.adjust(2, 2, 2, 1)
+    # Распределяем темы по 2 в ряд + последняя строка с кнопкой «Назад» (1 в ряд).
+    # Считаем динамически — если темы будут добавляться/убираться, всё подстроится.
+    n_themes = len(THEME_CHOICES)
+    rows = [2] * (n_themes // 2)
+    if n_themes % 2:
+        rows.append(1)  # хвост-кнопка темы
+    rows.append(1)  # «Назад»
+    kb.adjust(*rows)
     return kb.as_markup()
 
 
@@ -69,8 +80,16 @@ def length_kb() -> InlineKeyboardMarkup:
 
 
 def paywall_kb(can_referral: bool = True) -> InlineKeyboardMarkup:
+    """Премиум-paywall: три тарифа от дешёвого к дорогому, потом подарок и реферал.
+
+    Сортировка: разовая → пакет → подписка. Юзер сначала видит самую низкую
+    цену, чтобы не отпугнуть. Скидки −34% и −50% подсвечены в названии —
+    мгновенный сигнал «выгодно».
+    """
     kb = InlineKeyboardBuilder()
-    kb.button(text="Подписка 490 ₽/мес — безлимит", callback_data="bill:sub")
+    kb.button(text="Одна сказка — 99 ₽", callback_data="bill:single")
+    kb.button(text="Пакет 15 сказок — 999 ₽ (−34%)", callback_data="bill:pack")
+    kb.button(text="Подписка на месяц — 1485 ₽ (−50%)", callback_data="bill:monthly")
     kb.button(text="Подарить близкому — 199 ₽", callback_data="gift:new")
     if can_referral:
         kb.button(text="Пригласить друга и получить +3", callback_data="ref:share")

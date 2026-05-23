@@ -26,6 +26,7 @@ from sqlalchemy import desc, func, select
 
 from ..config import config
 from ..db import (
+    Feedback,
     Partner,
     PartnerCommission,
     Payment,
@@ -663,3 +664,175 @@ async def cmd_export_csv(message: Message, command: CommandObject) -> None:
         filename=f"skazka_{what}_{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d_%H%M')}.csv",
     )
     await message.answer_document(file, caption=f"CSV: {what} ({len(data)} bytes)")
+
+
+# ============================================================================
+# /generate_ambient <N> — генерация пула фоновых треков через Suno
+# /list_ambient        — посмотреть какие треки в пуле
+# /clear_ambient       — удалить весь пул (для regen с нуля)
+# ============================================================================
+
+@router.message(Command("generate_ambient"))
+async def cmd_generate_ambient(message: Message, command: CommandObject) -> None:
+    """Генерирует N фоновых инструментальных треков через Suno V5 (kie.ai)
+    и сохраняет в cache/ambient/. Каждый запрос Suno даёт 2 клипа,
+    то есть реальный размер пула ~= N × 2.
+
+    Пример: /generate_ambient 15 → ~30 треков в пуле, ~165 ₽ разово."""
+    if not _is_admin(message.from_user.id):
+        return
+    raw = (command.args or "").strip()
+    if not raw or not raw.isdigit():
+        await message.answer(
+            "Использование: <code>/generate_ambient N</code>\n\n"
+            "Например: <code>/generate_ambient 15</code> — Suno сгенерит 15 запросов "
+            "по ~2 трека = ~30 mp3 в пуле. Стоимость ~165 ₽ разово.\n\n"
+            "Каждый трек ~2-3 минуты, инструментальная колыбельная "
+            "(piano/music box/harp). Сохраняется в cache/ambient/, "
+            "используется случайно при микшировании сказок."
+        )
+        return
+    n = int(raw)
+    if n < 1 or n > 50:
+        await message.answer("N должно быть от 1 до 50.")
+        return
+
+    from ..services.bg_music import generate_bg_pool
+
+    await message.answer(
+        f"🎵 Запускаю генерацию {n} запросов Suno V5 "
+        f"(~{n*2} треков в пуле).\n\n"
+        f"Это займёт ~{n} минут (последовательно, чтоб не упереться в "
+        f"rate-limit kie.ai). Можно не ждать — сообщу когда закончу."
+    )
+
+    try:
+        succeeded, failed = await generate_bg_pool(n)
+        await message.answer(
+            f"✅ Готово.\n"
+            f"Успешных запросов: <b>{succeeded}</b>\n"
+            f"Ошибок: <b>{failed}</b>\n\n"
+            f"Посмотреть пул: /list_ambient"
+        )
+    except Exception as e:
+        logger.exception("generate_bg_pool failed")
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@router.message(Command("list_ambient"))
+async def cmd_list_ambient(message: Message) -> None:
+    """Список всех файлов в cache/ambient/."""
+    if not _is_admin(message.from_user.id):
+        return
+    from ..services.bg_music import list_bg_tracks
+
+    tracks = list_bg_tracks()
+    if not tracks:
+        await message.answer(
+            "Пул пустой. Сгенерируй через "
+            "<code>/generate_ambient 15</code>."
+        )
+        return
+    lines = [f"🎵 <b>В пуле {len(tracks)} треков:</b>\n"]
+    total_size = 0
+    for p in tracks[:50]:
+        size_kb = p.stat().st_size / 1024
+        total_size += size_kb
+        lines.append(f"  • {p.name} ({size_kb:.0f} КБ)")
+    if len(tracks) > 50:
+        lines.append(f"  … и ещё {len(tracks) - 50}")
+    lines.append(f"\n<b>Общий размер:</b> {total_size/1024:.1f} МБ")
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("clear_ambient"))
+async def cmd_clear_ambient(message: Message) -> None:
+    """Удалить все треки из пула. Используется перед regen."""
+    if not _is_admin(message.from_user.id):
+        return
+    from ..services.bg_music import clear_bg_pool
+
+    deleted = clear_bg_pool()
+    await message.answer(
+        f"🗑 Удалено треков: <b>{deleted}</b>\n\n"
+        f"Теперь сгенерируй новые через "
+        f"<code>/generate_ambient 15</code>."
+    )
+
+
+# ============================================================================
+# /feedback — посмотреть критику от юзеров
+# ============================================================================
+
+@router.message(Command("feedback"))
+async def cmd_feedback(message: Message, command: CommandObject) -> None:
+    """Показать последние отзывы-критику.
+    Использование:
+      /feedback              — последние 20
+      /feedback all          — все
+      /feedback <telegram_id> — все от конкретного юзера
+    """
+    if not _is_admin(message.from_user.id):
+        return
+
+    args = (command.args or "").strip()
+    limit = 20
+    user_filter_tg_id: int | None = None
+
+    if args == "all":
+        limit = 500
+    elif args.isdigit():
+        user_filter_tg_id = int(args)
+        limit = 100
+
+    async with Session() as s:
+        q = select(Feedback, User).join(User, User.id == Feedback.user_id)
+        if user_filter_tg_id:
+            q = q.where(User.telegram_id == user_filter_tg_id)
+        q = q.order_by(desc(Feedback.created_at)).limit(limit)
+        rows = (await s.execute(q)).all()
+
+    if not rows:
+        await message.answer(
+            "Пока ни одной критики не получено.\n\n"
+            "Юзерам предлагается дать критику после первой демо-сказки. "
+            "Подожди немного, либо проверь что фича задеплоилась."
+        )
+        return
+
+    total = len(rows)
+    header = f"📬 <b>Критика от юзеров ({total})</b>\n"
+    if user_filter_tg_id:
+        header = f"📬 <b>Критика от юзера {user_filter_tg_id} ({total})</b>\n"
+
+    lines = [header]
+    for fb, u in rows:
+        username = f"@{u.username}" if u.username else "(без юзернейма)"
+        when = fb.created_at.strftime("%d.%m %H:%M")
+        text_short = fb.text[:300] + ("…" if len(fb.text) > 300 else "")
+        lines.append(
+            f"\n— <b>{when}</b> · {username} (tg:<code>{u.telegram_id}</code>) · "
+            f"ребёнок {u.child_name or '?'} {u.child_age or '?'}л\n"
+            f"<i>{text_short}</i>"
+        )
+
+    full = "\n".join(lines)
+    # Telegram лимит 4096 символов — разбиваем
+    LIMIT = 3800
+    if len(full) <= LIMIT:
+        await message.answer(full)
+        return
+
+    buf: list[str] = []
+    size = 0
+    for line in lines:
+        block = line + "\n"
+        if size + len(block) > LIMIT and buf:
+            await message.answer("".join(buf))
+            buf = [block]
+            size = len(block)
+        else:
+            buf.append(block)
+            size += len(block)
+    if buf:
+        await message.answer("".join(buf))

@@ -6,6 +6,7 @@ from .models import (
     Referral,
     Partner,
     PartnerCommission,
+    Feedback,
     SubscriptionStatus,
     PaymentKind,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "Referral",
     "Partner",
     "PartnerCommission",
+    "Feedback",
     "SubscriptionStatus",
     "PaymentKind",
     "Session",

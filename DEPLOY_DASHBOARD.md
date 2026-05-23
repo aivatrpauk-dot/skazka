@@ -37,9 +37,9 @@
 С локальной машины (если SSH-бан прошёл):
 
 ```bash
-rsync -avz --delete \
-  '/Users/denis/Library/Application Support/Claude/local-agent-mode-sessions/54504e85-c517-4dff-b78d-f581725ae4f8/e5d709a2-5887-4408-905a-0b08786eea17/local_4f384842-4d86-4434-90e5-6e952a2e8993/outputs/skazka-bot/src/' \
-  skazka@193.233.89.216:/home/skazka/skazka-bot/src/
+rsync -avz --delete --exclude='__pycache__' --exclude='.DS_Store' \
+  ~/Downloads/skazka-bot/src/ \
+  skazka@77.110.119.32:/home/skazka/skazka-bot/src/
 ```
 
 Или через git push/pull если завёл репо.

@@ -32,6 +32,24 @@ INLINE_MIGRATIONS = [
     # или сбоя), повторный INSERT упадёт с unique violation, дубль не пройдёт.
     'CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_telegram_charge '
     'ON payments(telegram_payment_charge_id) WHERE telegram_payment_charge_id IS NOT NULL',
+    # Обратная связь / критика (May 2026)
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS feedback_given BOOLEAN DEFAULT FALSE',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS feedback_skipped_count INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS feedback_asked_at TIMESTAMP WITH TIME ZONE',
+    # Лимит 1 сказка в 24 часа (May 2026)
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_at TIMESTAMP WITH TIME ZONE',
+    # ─── Premium-стек миграция (May 2026): новые тарифы 99/999/1485 ───
+    # Пакет «15 сказок за 999 ₽» — счётчик и метка времени покупки.
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS pack_stories_remaining INTEGER DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS pack_purchased_at TIMESTAMP WITH TIME ZONE',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS single_stories_remaining INTEGER DEFAULT 0',
+    # Новые значения enum payment_kind. ALTER TYPE ADD VALUE IF NOT EXISTS работает с PG 9.6+
+    # и идемпотентен. Каждый ALTER — отдельным запросом (PostgreSQL не позволяет
+    # добавить value и сразу использовать его в той же транзакции).
+    "ALTER TYPE payment_kind ADD VALUE IF NOT EXISTS 'single_story'",
+    "ALTER TYPE payment_kind ADD VALUE IF NOT EXISTS 'pack_15'",
+    "ALTER TYPE payment_kind ADD VALUE IF NOT EXISTS 'monthly_sub'",
+    "ALTER TYPE payment_kind ADD VALUE IF NOT EXISTS 'monthly_renewal'",
 ]
 
 

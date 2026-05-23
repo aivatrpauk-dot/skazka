@@ -42,35 +42,87 @@ class Config:
     yookassa_shop_id: str = field(default_factory=lambda: _env("YOOKASSA_SHOP_ID", ""))
     yookassa_secret_key: str = field(default_factory=lambda: _env("YOOKASSA_SECRET_KEY", ""))
 
-    # API ключи
-    gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY", required=True))
+    # ─────────────── LLM-провайдер ───────────────
+    # anthropic — Claude Sonnet 4.6 (премиум, prompt-caching, ~2.8 ₽/сказка)
+    # gemini    — Gemini 2.5 Flash (бэкап, ~0.7 ₽/сказка, заметно проще языком)
+    llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "anthropic"))
+
+    # Anthropic (premium)
+    anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY", ""))
+    anthropic_model: str = field(default_factory=lambda: _env("ANTHROPIC_MODEL", "claude-sonnet-4-6"))
+
+    # Gemini (fallback / эконом). Опциональный — если LLM_PROVIDER=anthropic, ключ не обязателен.
+    gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY", ""))
     gemini_model_free: str = field(default_factory=lambda: _env("GEMINI_MODEL_FREE", "gemini-2.5-flash-lite"))
     gemini_model_paid: str = field(default_factory=lambda: _env("GEMINI_MODEL_PAID", "gemini-2.5-flash"))
 
+    # ─────────────── TTS-провайдер ───────────────
+    # azure (default, ~7 ₽/сказка) → yandex (fallback) → elevenlabs (last resort)
+    tts_provider: str = field(default_factory=lambda: _env("TTS_PROVIDER", "azure"))
+
+    # Azure Neural TTS (premium, новый primary)
+    azure_speech_key: str = field(default_factory=lambda: _env("AZURE_SPEECH_KEY", ""))
+    azure_speech_region: str = field(default_factory=lambda: _env("AZURE_SPEECH_REGION", "westeurope"))
+    # ru-RU-SvetlanaNeural — тёплая мама, для сказок 3-7.
+    # Альтернативы: ru-RU-DariyaNeural (мягкая молодая), ru-RU-DmitryNeural (мужской).
+    azure_tts_voice: str = field(default_factory=lambda: _env("AZURE_TTS_VOICE", "ru-RU-SvetlanaNeural"))
+    # Styles SvetlanaNeural поддерживает: chat, friendly, hopeful, affectionate, gentle.
+    # affectionate — «мама перед сном» (тёплый, мягкий, любящий).
+    azure_tts_style: str = field(default_factory=lambda: _env("AZURE_TTS_STYLE", "affectionate"))
+    # rate — скорость речи. Формат Azure: "-10%", "+5%", "slow", "default".
+    # -8% даёт сонный медленный темп.
+    azure_tts_rate: str = field(default_factory=lambda: _env("AZURE_TTS_RATE", "-8%"))
+
+    # Yandex SpeechKit (fallback)
+    yandex_api_key: str = field(default_factory=lambda: _env("YANDEX_API_KEY", ""))
+    yandex_folder_id: str = field(default_factory=lambda: _env("YANDEX_FOLDER_ID", ""))
+    yandex_tts_voice: str = field(default_factory=lambda: _env("YANDEX_TTS_VOICE", "alena"))
+    yandex_tts_emotion: str = field(default_factory=lambda: _env("YANDEX_TTS_EMOTION", "good"))
+    yandex_tts_speed: float = field(default_factory=lambda: _float("YANDEX_TTS_SPEED", 0.95))
+
+    # ElevenLabs (последний fallback)
     elevenlabs_api_key: str = field(default_factory=lambda: _env("ELEVENLABS_API_KEY", ""))
-    # Голос gD1IexrzCvsXPHUuT0s3 — живой, выразительный, чуть «мультяшный» в хорошем смысле:
-    # передаёт эмоции через интонацию, а не дикторски-монотонно. Лучше зашёл по тестам, чем
-    # «правильный мамский» Mariia (WfExDXCt2GBg6MI5KjQk) — тот красивый, но каменный.
     elevenlabs_voice_id: str = field(default_factory=lambda: _env("ELEVENLABS_VOICE_ID", "gD1IexrzCvsXPHUuT0s3"))
     elevenlabs_model: str = field(default_factory=lambda: _env("ELEVENLABS_MODEL", "eleven_turbo_v2_5"))
 
+    # ─────────────── Изображения ───────────────
+    # IMAGE_MODEL: recraft-v3 (premium, ~3.6 ₽) | flux-pro-1.1 | flux-dev | flux-schnell (0.3 ₽).
+    # Все идут через один FAL_KEY. Маппинг на endpoint — в services/image.py.
+    image_model: str = field(default_factory=lambda: _env("IMAGE_MODEL", "recraft-v3"))
     fal_api_key: str = field(default_factory=lambda: _env("FAL_KEY", ""))
-    fal_model: str = field(default_factory=lambda: _env("FAL_MODEL", "fal-ai/flux/schnell"))
 
-    # FusionBrain / Kandinsky (российский провайдер картинок, платится рублями)
+    # Legacy: если задан FAL_MODEL — переопределяет image_model (backward compat).
+    fal_model_legacy: str = field(default_factory=lambda: _env("FAL_MODEL", ""))
+
+    # Suno V5 через kie.ai — для генерации фоновых инструментальных колыбельных
+    kie_api_key: str = field(default_factory=lambda: _env("KIE_API_KEY", ""))
+    suno_model: str = field(default_factory=lambda: _env("SUNO_MODEL", "V5"))
+
+    # FusionBrain / Kandinsky (legacy fallback на случай если FAL ляжет)
     fusionbrain_api_key: str = field(default_factory=lambda: _env("FUSIONBRAIN_API_KEY", ""))
     fusionbrain_secret_key: str = field(default_factory=lambda: _env("FUSIONBRAIN_SECRET_KEY", ""))
 
     # БД
     db_url: str = field(default_factory=lambda: _env("DB_URL", "postgresql+asyncpg://skazka:skazka@db:5432/skazka"))
 
-    # Лимиты
-    free_story_limit: int = field(default_factory=lambda: _int("FREE_STORY_LIMIT", 3))
+    # ─────────────── Лимиты и тарифы ───────────────
+    # Новая бесплатная норма: ОДНА сказка триал. Дальше paywall.
+    free_story_limit: int = field(default_factory=lambda: _int("FREE_STORY_LIMIT", 1))
     referral_bonus: int = field(default_factory=lambda: _int("REFERRAL_BONUS", 3))
 
-    # Тарифы (копейки)
-    price_sub_kopecks: int = field(default_factory=lambda: _int("PRICE_SUB_KOPECKS", 49000))   # 490 ₽
-    price_gift_kopecks: int = field(default_factory=lambda: _int("PRICE_GIFT_KOPECKS", 19900))  # 199 ₽
+    # Разовая сказка — 99 ₽
+    price_single_kopecks: int = field(default_factory=lambda: _int("PRICE_SINGLE_KOPECKS", 9900))
+    # Пакет 15 сказок (одна в день) — 999 ₽
+    price_pack_kopecks: int = field(default_factory=lambda: _int("PRICE_PACK_KOPECKS", 99900))
+    pack_stories_count: int = field(default_factory=lambda: _int("PACK_STORIES_COUNT", 15))
+    # Месячная подписка (одна в день, рекуррент) — 1485 ₽
+    price_monthly_kopecks: int = field(default_factory=lambda: _int("PRICE_MONTHLY_KOPECKS", 148500))
+    # Подарочная сказка — 199 ₽ (оставляем для /gift)
+    price_gift_kopecks: int = field(default_factory=lambda: _int("PRICE_GIFT_KOPECKS", 19900))
+
+    # Legacy: старая цена подписки 490 ₽ — оставляем поле на случай ссылок в коде/логах,
+    # но в новой логике не используется.
+    price_sub_kopecks: int = field(default_factory=lambda: _int("PRICE_SUB_KOPECKS", 0))
 
     # Окружение
     env: str = field(default_factory=lambda: _env("ENV", "production"))

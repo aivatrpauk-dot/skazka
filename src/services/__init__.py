@@ -7,6 +7,12 @@ from .llm import (
 from .tts import synthesize_speech
 from .image import generate_cover
 from .billing import (
+    # Новые тарифы:
+    create_single_invoice,
+    create_pack_invoice,
+    create_monthly_invoice,
+    # Legacy (оставлены для backward compat — create_subscription_invoice
+    # стал алиасом на create_monthly_invoice):
     create_subscription_invoice,
     create_gift_invoice,
     create_recurring_payment,
@@ -33,6 +39,9 @@ __all__ = [
     "summarize_story",
     "synthesize_speech",
     "generate_cover",
+    "create_single_invoice",
+    "create_pack_invoice",
+    "create_monthly_invoice",
     "create_subscription_invoice",
     "create_gift_invoice",
     "create_recurring_payment",

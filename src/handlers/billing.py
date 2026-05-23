@@ -1,4 +1,15 @@
-"""Платежи. Telegram Payments (provider=ЮKassa) + рекуррент через API ЮKassa."""
+"""Платежи. Telegram Payments (provider=ЮKassa) + рекуррент через API ЮKassa.
+
+Три тарифа (см. services/billing.py):
+  - bill:single  → 99 ₽ за одну сказку
+  - bill:pack    → 999 ₽ за пакет 15 сказок (−34%)
+  - bill:monthly → 1485 ₽/мес подписка (−50%, рекуррент)
+
+Legacy:
+  - bill:sub  → перенаправляется на bill:monthly (старый callback в архивных
+                сообщениях/пушах продолжает работать).
+  - bill:plans → показ paywall (все три тарифа сразу).
+"""
 from __future__ import annotations
 
 import datetime as dt
@@ -14,8 +25,9 @@ from ..keyboards import main_menu_kb, paywall_kb
 from ..services import (
     attribute_payment_to_partner,
     compute_subscription_price,
-    create_gift_invoice,
-    create_subscription_invoice,
+    create_monthly_invoice,
+    create_pack_invoice,
+    create_single_invoice,
     process_successful_payment,
 )
 
@@ -23,35 +35,43 @@ logger = logging.getLogger(__name__)
 router = Router(name="billing")
 
 
+# ─────────────────── Текст витрины тарифов ───────────────────
+# Показывается при нажатии «Тарифы» / при попадании на paywall.
+# Подсветка экономии (−34%, −50%) — главный triggers для конверсии в пакет/подписку.
+
 PLANS_TEXT = (
     "<b>Тарифы</b>\n\n"
-    "🌙 <b>Бесплатно</b> — {free} сказки в подарок. Только текст.\n\n"
-    "✨ <b>Подписка — 490 ₽/мес</b>\n"
-    "• Безлимит сказок\n"
-    "• Озвучка нежным голосом (ElevenLabs)\n"
-    "• Картинка-обложка к каждой сказке\n"
-    "• Лучшее качество текста\n"
-    "• Архив всех сказок\n"
-    "• Отмена в любой момент\n\n"
+    "🌙 <b>Бесплатно</b> — {free} сказка в подарок при первом запуске.\n\n"
+    "✨ <b>Одна сказка — 99 ₽</b>\n"
+    "Разовая покупка. Никаких подписок, без ограничений по дням.\n\n"
+    "📚 <b>Пакет 15 сказок — 999 ₽</b> <i>(−34%)</i>\n"
+    "Одна сказка в день в течение двух недель. Срок пакета не сгорает —\n"
+    "пользуйтесь когда хочется. Экономия 486 ₽ против штучной цены.\n\n"
+    "🌟 <b>Подписка на месяц — 1485 ₽</b> <i>(−50%)</i>\n"
+    "Сказка каждый день на месяц. Автопродление, отмена в любой момент.\n"
+    "Экономия 1485 ₽ против штучной цены.\n\n"
     "🎁 <b>Подарок близким — 199 ₽</b>\n"
-    "Одна персональная сказка под имя ребёнка, с озвучкой и обложкой. "
-    "Получаете ссылку — отправляете близким.\n\n"
-    "<i>Нажимая «Подписаться» или «В подарок», вы принимаете публичную оферту "
+    "Одна персональная сказка под имя ребёнка — отправляете ссылкой.\n\n"
+    "Во всех тарифах: озвучка тёплым женским голосом + обложка-картинка к каждой сказке.\n\n"
+    "<i>Нажимая «Купить» / «Подписаться», вы принимаете публичную оферту "
     "и даёте согласие на обработку персональных данных. Подробно — /legal</i>"
 )
 
 
 @router.callback_query(F.data == "bill:plans")
 async def cb_plans(call: CallbackQuery) -> None:
-    # Если юзер пришёл от партнёра и ещё не платил — показываем баннер со скидкой
-    amount, partner, discount_pct = await compute_subscription_price(call.from_user.id)
+    """Показать paywall с тремя тарифами. Если юзер от партнёра и ещё не платил
+    — добавим баннер со скидкой (для подписки)."""
+    monthly_amount, partner, discount_pct = await compute_subscription_price(
+        call.from_user.id, "monthly"
+    )
     banner = ""
     if discount_pct > 0 and partner is not None:
         banner = (
             f"🎁 <b>Спецпредложение от {partner.name}</b>\n"
-            f"Первый месяц подписки — <b>{amount/100:.0f} ₽</b> "
-            f"(вместо {config.price_sub_kopecks/100:.0f} ₽, экономия −{discount_pct}%).\n"
-            f"Действует на ваш первый платёж. Дальше — обычная цена 490 ₽/мес.\n\n"
+            f"Первая покупка — со скидкой −{discount_pct}%.\n"
+            f"Например, подписка на месяц = {monthly_amount/100:.0f} ₽ "
+            f"вместо {config.price_monthly_kopecks/100:.0f} ₽.\n\n"
         )
     await call.message.edit_text(
         banner + PLANS_TEXT.format(free=config.free_story_limit),
@@ -60,29 +80,57 @@ async def cb_plans(call: CallbackQuery) -> None:
     await call.answer()
 
 
-@router.callback_query(F.data == "bill:sub")
-async def cb_sub(call: CallbackQuery, bot: Bot) -> None:
-    """Сразу открываем оплату. Нажатие кнопки «Подписаться» = конклюдентное
-    согласие с офертой и политикой (ст. 438 ГК РФ). Юзер уже видит мелкую
-    italic-строку про согласие в окне «Тарифы» (см. PLANS_TEXT).
-
-    Записываем `tos_accepted_at` на этом этапе как audit-trail."""
-    import datetime as dt
-
-    await call.answer()
-
+async def _accept_tos(telegram_id: int) -> None:
+    """Конклюдентное согласие с офертой = нажатие любой кнопки оплаты.
+    Записываем audit-trail tos_accepted_at если ещё не записано."""
     async with Session() as s:
         u = (
-            await s.execute(select(User).where(User.telegram_id == call.from_user.id))
+            await s.execute(select(User).where(User.telegram_id == telegram_id))
         ).scalar_one_or_none()
         if u and not u.tos_accepted_at:
             u.tos_accepted_at = dt.datetime.now(dt.timezone.utc)
             await s.commit()
-            logger.info("TOS accepted (implicit by 'Подписаться') user=%s at %s",
-                        call.from_user.id, u.tos_accepted_at)
+            logger.info("TOS accepted (implicit) user=%s at %s",
+                        telegram_id, u.tos_accepted_at)
 
-    await create_subscription_invoice(bot, call.message.chat.id, call.from_user.id)
 
+# ─────────────────── Три новых хендлера ───────────────────
+
+@router.callback_query(F.data == "bill:single")
+async def cb_single(call: CallbackQuery, bot: Bot) -> None:
+    """Одна сказка 99 ₽."""
+    await call.answer()
+    await _accept_tos(call.from_user.id)
+    await create_single_invoice(bot, call.message.chat.id, call.from_user.id)
+
+
+@router.callback_query(F.data == "bill:pack")
+async def cb_pack(call: CallbackQuery, bot: Bot) -> None:
+    """Пакет 15 сказок 999 ₽."""
+    await call.answer()
+    await _accept_tos(call.from_user.id)
+    await create_pack_invoice(bot, call.message.chat.id, call.from_user.id)
+
+
+@router.callback_query(F.data == "bill:monthly")
+async def cb_monthly(call: CallbackQuery, bot: Bot) -> None:
+    """Подписка 1485 ₽/мес."""
+    await call.answer()
+    await _accept_tos(call.from_user.id)
+    await create_monthly_invoice(bot, call.message.chat.id, call.from_user.id)
+
+
+# ─────────────────── Legacy ───────────────────
+
+@router.callback_query(F.data == "bill:sub")
+async def cb_sub_legacy(call: CallbackQuery, bot: Bot) -> None:
+    """Старый callback из 490 ₽-времён. Перенаправляем на новую месячную."""
+    await call.answer()
+    await _accept_tos(call.from_user.id)
+    await create_monthly_invoice(bot, call.message.chat.id, call.from_user.id)
+
+
+# ─────────────────── pre_checkout + successful_payment ───────────────────
 
 @router.pre_checkout_query()
 async def pre_checkout(query: PreCheckoutQuery, bot: Bot) -> None:
@@ -99,43 +147,63 @@ async def on_paid(message: Message, bot: Bot) -> None:
         telegram_charge_id=sp.telegram_payment_charge_id,
         provider_charge_id=sp.provider_payment_charge_id,
     )
-    # Партнёрская комиссия — если юзер пришёл от партнёра, начислим и уведомим его.
-    # Идемпотентно (commit по unique payment_id).
-    await attribute_payment_to_partner(payment, user, bot)
-    # Бонус приглашающему: 50% от первого платежа (через bonus_stories для простоты — 5 сказок)
-    async with Session() as s:
-        ref = (
-            await s.execute(select(Referral).where(Referral.invited_id == user.id))
-        ).scalar_one_or_none()
-        if ref and not ref.bonus_granted and kind == PaymentKind.subscription:
-            inviter = await s.get(User, ref.inviter_id)
-            if inviter:
-                inviter.bonus_stories = (inviter.bonus_stories or 0) + 5
-                ref.bonus_granted = True
-                await s.commit()
-                try:
-                    await bot.send_message(
-                        inviter.telegram_id,
-                        "Ваш друг оформил подписку — вам +5 бонусных сказок. Спасибо!",
-                    )
-                except Exception:
-                    pass
 
-    if kind == PaymentKind.subscription:
+    # Партнёрская комиссия (если юзер пришёл от партнёра)
+    await attribute_payment_to_partner(payment, user, bot)
+
+    # Бонус приглашающему: +5 сказок только при первой подписке (monthly или legacy)
+    if kind in (PaymentKind.monthly_sub, PaymentKind.subscription):
+        async with Session() as s:
+            ref = (
+                await s.execute(select(Referral).where(Referral.invited_id == user.id))
+            ).scalar_one_or_none()
+            if ref and not ref.bonus_granted:
+                inviter = await s.get(User, ref.inviter_id)
+                if inviter:
+                    inviter.bonus_stories = (inviter.bonus_stories or 0) + 5
+                    ref.bonus_granted = True
+                    await s.commit()
+                    try:
+                        await bot.send_message(
+                            inviter.telegram_id,
+                            "Ваш друг оформил подписку — вам +5 бонусных сказок. Спасибо!",
+                        )
+                    except Exception:
+                        pass
+
+    # Ответ юзеру в зависимости от типа покупки
+    if kind in (PaymentKind.monthly_sub, PaymentKind.subscription):
         until = user.subscription_until.strftime("%d.%m.%Y") if user.subscription_until else "—"
         await message.answer(
             f"🎉 Подписка активна до <b>{until}</b>.\n"
-            "Теперь сказки с озвучкой и обложкой — без лимитов.\n\n"
+            "Каждый день — новая сказка с озвучкой и обложкой.\n\n"
             "Создать сказку:",
             reply_markup=main_menu_kb(),
         )
-    else:
+    elif kind == PaymentKind.pack_15:
+        await message.answer(
+            f"📚 Пакет активирован! У вас <b>{user.pack_stories_remaining}</b> сказок "
+            f"(одна в день).\n\n"
+            "Создать сказку:",
+            reply_markup=main_menu_kb(),
+        )
+    elif kind == PaymentKind.single_story:
+        await message.answer(
+            "✨ Оплата прошла! Сейчас сделаю вашу сказку.\n\n"
+            "Создать сказку:",
+            reply_markup=main_menu_kb(),
+        )
+    elif kind == PaymentKind.gift:
         await message.answer(
             "🎁 Подарок оплачен. Готовлю сказку — это займёт около 15–20 секунд."
         )
-        # Передаём в gift-флоу — он сам сгенерирует сказку и отправит покупателю
         from .gift import complete_gift_after_payment
         await complete_gift_after_payment(bot, message.from_user.id)
+    else:
+        await message.answer(
+            "Оплата прошла. Создать сказку:",
+            reply_markup=main_menu_kb(),
+        )
 
 
 @router.message(F.text == "/cancel_subscription")
@@ -147,18 +215,21 @@ async def cancel_sub(message: Message) -> None:
         await s.commit()
     until = u.subscription_until.strftime("%d.%m.%Y") if u.subscription_until else "—"
     await message.answer(
-        f"Подписка отменена. Доступ к платным функциям сохранится до {until}.\n"
+        f"Подписка отменена. Доступ к ежедневным сказкам сохранится до {until}.\n"
         "Дальше списаний не будет."
     )
 
 
 @router.message(F.text == "/refund")
 async def request_refund(message: Message) -> None:
-    """Самостоятельный возврат в первые 7 дней."""
+    """Самостоятельный возврат в первые 7 дней (только для подписки).
+    Для разовой/пакета — через /support вручную."""
     async with Session() as s:
         u = (await s.execute(select(User).where(User.telegram_id == message.from_user.id))).scalar_one()
     if not u.subscription_until:
-        await message.answer("Активной подписки не вижу. Если что-то не так — напишите /support.")
+        await message.answer(
+            "Активной подписки не вижу. Если разовая или пакет — напишите /support, разберёмся."
+        )
         return
     days = (dt.datetime.now(dt.timezone.utc) - (u.subscription_until - dt.timedelta(days=30))).days
     if days > 7:
@@ -176,7 +247,6 @@ async def request_refund(message: Message) -> None:
         u.subscription_status = SubscriptionStatus.cancelled
         u.yookassa_payment_method_id = None
         await s.commit()
-    # Уведомить админа
     for admin_id in config.admin_ids:
         try:
             await message.bot.send_message(admin_id, f"REFUND-REQUEST: tg={message.from_user.id}")

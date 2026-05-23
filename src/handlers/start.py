@@ -29,15 +29,15 @@ router = Router(name="start")
 
 
 WELCOME = (
-    "Здравствуйте! Это <b>{brand}</b> — бот, который пишет персональные сказки на ночь "
-    "для вашего ребёнка.\n\n"
-    "Имя ребёнка, любимый герой, тема — и через 10 секунд у вас готовая сказка с "
-    "озвучкой нежным голосом и обложкой-картинкой.\n\n"
-    "🎁 <b>Первая сказка — бесплатная демо с озвучкой и обложкой</b>, чтобы вы услышали "
-    "и увидели сразу. Дальше — ещё {free_minus_one} бесплатных сказок текстом.\n\n"
-    "После — подписка 490 ₽/мес (безлимит + озвучка + картинка) или одноразовая сказка "
-    "в подарок близким за 199 ₽.\n\n"
-    "<i>Продолжая использование, вы соглашаетесь с условиями — /legal</i>"
+    "Здравствуйте.\n\n"
+    "Это <b>{brand}</b> — бот, который пишет персональные сказки "
+    "на ночь для Вашего ребёнка 3-6 лет.\n\n"
+    "Имя ребёнка, любимый герой, тема — и через 10 секунд готовая "
+    "сказка: с озвучкой нежным голосом и обложкой как у настоящих "
+    "книжек.\n\n"
+    "🌙 Одна сказка вечером — и спокойный сон. Это и есть наш формат.\n\n"
+    "Первая сказка — сегодня. До встречи перед сном.\n\n"
+    "<i>Продолжая использование, Вы соглашаетесь с условиями — /legal</i>"
 )
 
 
@@ -134,7 +134,7 @@ async def cmd_start_deep(message: Message, command: CommandObject) -> None:
     )
     hero, child = await _last_story_hero(u.id)
     await message.answer(
-        WELCOME.format(brand=config.bot_brand, free_minus_one=max(0, config.free_story_limit - 1)),
+        WELCOME.format(brand=config.bot_brand),
         reply_markup=main_menu_kb(continuation_hero=hero, continuation_child=child),
     )
 
@@ -144,7 +144,7 @@ async def cmd_start(message: Message) -> None:
     u = await _ensure_user(message.from_user)
     hero, child = await _last_story_hero(u.id)
     await message.answer(
-        WELCOME.format(brand=config.bot_brand, free_minus_one=max(0, config.free_story_limit - 1)),
+        WELCOME.format(brand=config.bot_brand),
         reply_markup=main_menu_kb(continuation_hero=hero, continuation_child=child),
     )
 
@@ -158,7 +158,7 @@ async def cb_main_menu(call: CallbackQuery) -> None:
     else:
         hero, child = None, None
     await call.message.edit_text(
-        WELCOME.format(brand=config.bot_brand, free_minus_one=max(0, config.free_story_limit - 1)),
+        WELCOME.format(brand=config.bot_brand),
         reply_markup=main_menu_kb(continuation_hero=hero, continuation_child=child),
     )
     await call.answer()

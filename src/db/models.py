@@ -21,6 +21,14 @@ class SubscriptionStatus(str, enum.Enum):
 
 
 class PaymentKind(str, enum.Enum):
+    # Новые тарифы (после миграции на премиум-стек):
+    single_story = "single_story"        # разовая сказка 99 ₽
+    pack_15 = "pack_15"                  # пакет 15 сказок 999 ₽ (одна в день)
+    monthly_sub = "monthly_sub"          # месячная подписка 1485 ₽ (одна в день, рекуррент)
+    monthly_renewal = "monthly_renewal"  # ежемесячное автосписание для monthly_sub
+
+    # Legacy (старая модель 490 ₽/мес + 199 ₽ подарок). Сохраняем для backward compat —
+    # исторические записи в БД остаются валидными.
     subscription = "subscription"
     gift = "gift"
     renewal = "renewal"
@@ -47,6 +55,18 @@ class User(Base):
     free_stories_used: Mapped[int] = mapped_column(Integer, default=0)
     bonus_stories: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Пакет «15 сказок за 999 ₽». Покупка кладёт сюда +15, каждая сгенерированная
+    # сказка снимает 1. Пакет НЕ имеет срока годности (купил — пользуйся когда
+    # хочется), но дневной лимит 1/сутки (last_story_at) применяется.
+    pack_stories_remaining: Mapped[int] = mapped_column(Integer, default=0)
+    pack_purchased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Счётчик неиспользованных разовых сказок (99 ₽). При каждой оплате
+    # single_story в эту колонку добавляется +1. При генерации сказки сначала
+    # списывается отсюда (без daily-лимита — юзер платит каждый раз и может
+    # сделать сразу несколько в день).
+    single_stories_remaining: Mapped[int] = mapped_column(Integer, default=0)
+
     # подписка
     subscription_status: Mapped[SubscriptionStatus] = mapped_column(
         Enum(SubscriptionStatus, name="subscription_status"), default=SubscriptionStatus.none
@@ -61,6 +81,16 @@ class User(Base):
     # Audit trail для юр.документов (152-ФЗ + оферта).
     # Заполняется когда юзер явно нажал «Согласен» перед оплатой.
     tos_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Обратная связь (критика) от юзера. Спрашиваем после первой сказки.
+    # Если пропустил — повторим через 3 сказки. После написания — больше не просим.
+    feedback_given: Mapped[bool] = mapped_column(Boolean, default=False)
+    feedback_skipped_count: Mapped[int] = mapped_column(Integer, default=0)
+    feedback_asked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Лимит 1 сказка в день — независимо от подписки. Это позиционирование:
+    # одна история перед сном, не три. Защита от спама и формирование привычки.
+    last_story_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_active_at: Mapped[datetime] = mapped_column(
@@ -157,6 +187,19 @@ class Partner(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     notes: Mapped[str | None] = mapped_column(Text)
 
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Feedback(Base):
+    """Критика / обратная связь от юзера. Спрашиваем после первой сказки.
+    За написанную критику начисляется бонусная сказка (полная демо)."""
+    __tablename__ = "feedbacks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    story_id: Mapped[int | None] = mapped_column(ForeignKey("stories.id"))
+    text: Mapped[str] = mapped_column(Text)
+    bonus_granted: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
