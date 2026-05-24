@@ -26,10 +26,14 @@ from typing import Any
 from ..config import config
 from ..prompts import (
     EXTRACT_SCENE_PROMPT,
+    EXTRACT_THREE_SCENES_PROMPT,
     SERIES_CONTEXT_TEMPLATE,
     SYSTEM_GIFT_STORYTELLER,
     SYSTEM_STORYTELLER,
+    SYSTEM_STORYTELLER_TODDLER,
     THEME_CHOICES,
+    parse_story_marker,
+    pick_storyteller_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,7 +145,7 @@ async def _generate_anthropic(
     system_template: str,
     format_params: dict[str, Any],
     user_message: str,
-    temperature: float = 0.85,
+    temperature: float = 0.95,
     max_tokens: int = 8000,
 ) -> str:
     """Генерация через Anthropic API с prompt caching.
@@ -217,7 +221,7 @@ async def _generate_gemini(
     system_prompt: str,
     user_message: str,
     model_name: str,
-    temperature: float = 0.85,
+    temperature: float = 0.95,
     max_tokens: int = 8000,
 ) -> str:
     """Генерация через Gemini. System форматируется заранее (Gemini не
@@ -250,53 +254,71 @@ async def generate_story(
     *,
     child_name: str,
     child_age: int,
-    hero: str,
-    theme_key: str,
-    length: str,
-    paid_quality: bool,
+    hero: str = "",
+    theme_key: str = "",
+    length: str = "",
+    paid_quality: bool = True,
     previous_summary: str | None = None,
-) -> str:
-    """Генерирует сказку. Возвращает чистый текст.
+    last_story_group: str | None = None,
+    last_story_architecture: int | None = None,
+) -> tuple[str, str | None, int | None]:
+    """Генерирует сказку. Возвращает (чистый текст, группа, архитектура).
 
-    Если переданы previous_summary — новая серия в той же вселенной с теми
-    же героями (модель антологии, без обещаний продолжения сюжета).
+    Сказочник сам выбирает группу и архитектуру из 25 шаблонов. Чтобы он
+    не повторял группу два дня подряд — мы храним `last_story_group` в БД
+    юзера и передаём сюда. Если передано — модель получает явную подсказку
+    «вчера была группа X, сегодня другая».
+
+    Первой строкой модель пишет маркер «Группа В, архитектура 11 — …»,
+    который мы парсим, сохраняем в БД и обрезаем от текста.
+
+    hero / theme_key / length / previous_summary — оставлены для обратной
+    совместимости с вызовами из старого UI, в новом промпте игнорируются.
 
     paid_quality — для Gemini выбор между Flash-Lite (дёшево) и Flash (лучше).
     Для Anthropic игнорируется (всегда полное качество Sonnet 4.6).
     """
-    theme_label, theme_desc = THEME_CHOICES[theme_key]
-    _ = length  # длина жёстко задана возрастом внутри промпта, оставлен для compat
+    _ = hero, theme_key, length, previous_summary  # legacy, не используется
 
-    if previous_summary:
-        series_context = SERIES_CONTEXT_TEMPLATE.format(
-            previous_summary=previous_summary,
-            child_name=child_name,
-            hero=hero,
+    # Выбираем промпт по возрасту: 3-4 → toddler (8 архитектур, проще, добрее),
+    # 5-6 → основной (25 архитектур, сложнее, глубже). Граница на 5 годах.
+    storyteller_prompt, rotation_hint_template = pick_storyteller_prompt(child_age)
+    logger.info(
+        "Выбран промпт: %s для возраста %d",
+        "toddler" if storyteller_prompt is SYSTEM_STORYTELLER_TODDLER else "kids",
+        child_age,
+    )
+
+    # Подсказка о предыдущей архитектуре — пустая для первой сказки.
+    # Для kids-промпта используется last_story_group + архитектура,
+    # для toddler — только архитектура (групп нет, только номер 1..8).
+    if last_story_architecture:
+        rotation_hint = rotation_hint_template.format(
+            last_group=last_story_group or "",
+            last_architecture=last_story_architecture,
         )
     else:
-        series_context = ""
+        rotation_hint = ""
 
     format_params = {
         "child_name": child_name,
         "child_age": child_age,
-        "hero": hero,
-        "theme": f"{theme_label} — {theme_desc}",
-        "series_context": series_context,
+        "rotation_hint": rotation_hint,
     }
-    user_message = "Напиши сказку по структуре. Завершённая концовка, никаких тизеров."
+    user_message = "Напиши сказку. Не забудь маркер архитектуры первой строкой."
 
     provider = config.llm_provider
     text = ""
     try:
         if provider == "anthropic":
             text = await _generate_anthropic(
-                system_template=SYSTEM_STORYTELLER,
+                system_template=storyteller_prompt,
                 format_params=format_params,
                 user_message=user_message,
             )
         else:
             model_name = config.gemini_model_paid if paid_quality else config.gemini_model_free
-            full_system = SYSTEM_STORYTELLER.format(**format_params)
+            full_system = storyteller_prompt.format(**format_params)
             text = await _generate_gemini(
                 system_prompt=full_system,
                 user_message=user_message,
@@ -307,7 +329,7 @@ async def generate_story(
         logger.exception("LLM %s упал: %s", provider, e)
         if provider == "anthropic" and config.gemini_api_key:
             logger.warning("LLM fallback на Gemini Flash")
-            full_system = SYSTEM_STORYTELLER.format(**format_params)
+            full_system = storyteller_prompt.format(**format_params)
             text = await _generate_gemini(
                 system_prompt=full_system,
                 user_message=user_message,
@@ -316,7 +338,7 @@ async def generate_story(
         elif provider == "gemini" and config.anthropic_api_key:
             logger.warning("LLM fallback на Anthropic")
             text = await _generate_anthropic(
-                system_template=SYSTEM_STORYTELLER,
+                system_template=storyteller_prompt,
                 format_params=format_params,
                 user_message=user_message,
             )
@@ -325,7 +347,17 @@ async def generate_story(
 
     if not text:
         raise RuntimeError("LLM вернул пустой ответ")
-    return _clean_story_text(text)
+
+    # Парсим маркер первой строки и сразу её обрезаем.
+    cleaned, group, architecture = parse_story_marker(text)
+    if group is None:
+        logger.warning(
+            "LLM не вернул маркер группы/архитектуры. Ротация не сработает на следующей сказке."
+        )
+    else:
+        logger.info("Сказка: группа %s, архитектура %d", group, architecture)
+
+    return _clean_story_text(cleaned), group, architecture
 
 
 async def generate_gift_story(
@@ -338,7 +370,9 @@ async def generate_gift_story(
 ) -> str:
     """Подарочная сказка через GIFT-промпт. Кэширование менее эффективно
     (юзер редко делает несколько подарков подряд), но logic та же."""
-    theme_label, theme_desc = THEME_CHOICES[theme_key]
+    # THEME_CHOICES хранит 3 элемента: label, desc, title_phrase.
+    # Для LLM-промпта нам нужны первые два, третий используется в PDF-заголовке.
+    theme_label, theme_desc = THEME_CHOICES[theme_key][:2]
     format_params = {
         "recipient_name": recipient_name,
         "recipient_age": recipient_age,
@@ -395,6 +429,55 @@ async def extract_scene(story_text: str) -> str | None:
         return None
     except Exception as e:
         logger.warning("extract_scene failed: %s", e)
+        return None
+
+
+async def extract_three_scenes(story_text: str) -> dict[str, str] | None:
+    """Извлекает opening/climax/ending сцены для 3 иллюстраций книжки.
+
+    Возвращает dict {"opening": "...", "climax": "...", "ending": "..."}
+    или None если не удалось распарсить.
+
+    Использует Gemini Flash-Lite — дёшево, быстро, для структурированной задачи
+    в самый раз. Если Gemini нет — возвращаем None, и handlers/story.py
+    использует обычный extract_scene для одной картинки + FALLBACK для остальных.
+    """
+    genai = _ensure_gemini()
+    if genai is None:
+        logger.info("Gemini не настроен — пропускаю extract_three_scenes")
+        return None
+    try:
+        model = genai.GenerativeModel(config.gemini_model_free)
+        response = await model.generate_content_async(
+            EXTRACT_THREE_SCENES_PROMPT.format(story_text=story_text[:4000]),
+            generation_config={
+                "temperature": 0.3,
+                "max_output_tokens": 500,
+                # response_mime_type для гарантии JSON. Gemini 2.5 поддерживает.
+                "response_mime_type": "application/json",
+            },
+        )
+        raw = (response.text or "").strip()
+        if not raw:
+            return None
+        import json
+        # На случай если модель всё-таки обернула в ```json ... ``` —
+        # вырезаем codeblock-обёртку.
+        cleaned = raw
+        if cleaned.startswith("```"):
+            cleaned = cleaned.strip("`")
+            if cleaned.lower().startswith("json"):
+                cleaned = cleaned[4:].strip()
+        data = json.loads(cleaned)
+        # Валидация — все три ключа должны быть строками
+        for key in ("opening", "climax", "ending"):
+            v = data.get(key)
+            if not isinstance(v, str) or not (8 < len(v) < 400):
+                logger.warning("extract_three_scenes: невалидный ключ %s = %r", key, v)
+                return None
+        return {"opening": data["opening"], "climax": data["climax"], "ending": data["ending"]}
+    except Exception as e:
+        logger.warning("extract_three_scenes failed: %s", e)
         return None
 
 

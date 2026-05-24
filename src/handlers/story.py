@@ -10,11 +10,11 @@ from pathlib import Path
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, Message
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from ..config import config
 from ..db import Session, Story, SubscriptionStatus, User
-from ..keyboards import after_story_kb, hero_kb, main_menu_kb, paywall_kb, theme_kb
+from ..keyboards import after_story_kb, age_kb, hero_kb, main_menu_kb, paywall_kb, theme_kb
 from ..prompts import HERO_QUICK_PICKS, THEME_CHOICES
 from ..services import (
     extract_scene,
@@ -171,11 +171,15 @@ def _paywall_reason_text(u: User) -> str:
         # Не закончились сказки, просто рано
         next_at = u.last_story_at + dt.timedelta(hours=DAILY_LIMIT_HOURS)
         return (
-            "🌙 Сегодняшняя сказка уже создана.\n"
-            f"Следующая будет доступна {next_at.strftime('%d.%m в %H:%M')}.\n\n"
-            "Пока — давайте просто отдохнём перед сном."
+            "🌙 Сегодняшняя сказка уже сложена — её достаточно на этот вечер.\n"
+            f"Следующая будет ждать Вас <b>{next_at.strftime('%d.%m в %H:%M')}</b>.\n\n"
+            "Пока — просто побудьте рядом. Этого тоже хватит."
         )
-    return "Бесплатные сказки закончились. Выберите, как продолжить:"
+    return (
+        "🕯 Сказка, что была подарена Вам для знакомства, уже отзвучала. "
+        "Чтобы наш вечерний ритуал не прерывался — выберите, что Вам "
+        "ближе:"
+    )
 
 
 async def _get_user(telegram_id: int) -> User:
@@ -219,7 +223,8 @@ async def cb_story_continue(call: CallbackQuery, state: FSMContext, bot: Bot) ->
         continue_series=True,
     )
     await call.message.edit_text(
-        f"Новая история про <b>{accusative(last.child_name)}</b> и <b>{hero_accusative(last.hero)}</b>."
+        f"🕯 Новая глава из жизни <b>{accusative(last.child_name)}</b> и "
+        f"<b>{hero_accusative(last.hero)}</b>. Открываем чистую страницу…"
     )
     await call.answer()
     # Без шага «выбора длины» — сразу запускаем генерацию
@@ -238,22 +243,25 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
         return
 
     if u.child_name:
-        # уже знаем ребёнка — предложим использовать его данные
-        await state.update_data(child_name=u.child_name, child_age=u.child_age or 5)
+        # уже знаем ребёнка — но возраст спрашиваем заново каждый раз:
+        # у родителя может быть несколько детей разных возрастов, а возраст
+        # определяет, какой промпт получит сказочник (toddler / kids).
+        await state.update_data(child_name=u.child_name)
         name_gen = genitive(u.child_name)        # для Лизы
-        name_ins = instrumental(u.child_name)    # рядом с Лизой
         await call.message.edit_text(
-            f"Делаем сказку для <b>{name_gen}</b> ({u.child_age} лет).\n"
-            f"Если для другого ребёнка — нажмите «Назад» и введите имя.\n\n"
-            f"Кто будет главным героем рядом с {name_ins}?",
-            reply_markup=hero_kb(),
+            f"Сегодня сказка для <b>{name_gen}</b>.\n"
+            f"<i>Если на этот вечер у Вас другой ребёнок — нажмите «Назад» "
+            f"и впишите имя.</i>\n\n"
+            f"Сколько лет ребёнку?",
+            reply_markup=age_kb(),
         )
-        await state.set_state(StoryWizard.waiting_hero)
+        await state.set_state(StoryWizard.waiting_child_age)
         await call.answer()
         return
 
     await call.message.edit_text(
-        "Как зовут ребёнка? Напишите имя.\n<i>Например: Маша, Тимофей, Лиза.</i>",
+        "🕯 Как зовут малыша, для которого мы сочиним сегодняшнюю сказку?\n"
+        "<i>Напишите имя — например, Маша, Тимофей или Лиза.</i>",
     )
     await state.set_state(StoryWizard.waiting_child_name)
     await call.answer()
@@ -263,31 +271,69 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
 async def m_child_name(message: Message, state: FSMContext) -> None:
     raw = (message.text or "").strip()[:32]
     if not raw or not raw.replace("-", "").replace(" ", "").isalpha():
-        await message.answer("Имя только буквами, до 32 символов. Попробуйте ещё раз.")
+        await message.answer(
+            "Пожалуйста, только буквы — и не длиннее тридцати двух знаков. "
+            "Попробуйте ещё раз."
+        )
         return
     name = normalize_name(raw)  # ЛИза → Лиза, анна-мария → Анна-Мария
-    # Возраст больше не спрашиваем — наши сказки только для 3-6 лет.
-    # Фиксируем дефолт 5 (середина диапазона) — используется в БД и логах,
-    # на сам промпт не влияет.
-    await state.update_data(child_name=name, child_age=5)
+    await state.update_data(child_name=name)
+    # Спрашиваем возраст — он определяет промпт (toddler для 3-4, основной
+    # для 5-6 с 25 архитектурами). Без явного выбора пользователя промпт
+    # не подобрать.
     await message.answer(
-        f"Кто будет главным героем рядом с {instrumental(name)}?",
-        reply_markup=hero_kb(),
+        f"Сколько лет {genitive(name)}?",
+        reply_markup=age_kb(),
     )
-    await state.set_state(StoryWizard.waiting_hero)
+    await state.set_state(StoryWizard.waiting_child_age)
+
+
+@router.callback_query(StoryWizard.waiting_child_age, F.data.startswith("age:"))
+async def cb_child_age(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    """Юзер выбрал возрастную группу — сохраняем и запускаем генерацию.
+
+    Героя и тему НЕ спрашиваем — сказочник сам решает, кого позвать и о
+    чём рассказать сегодня. callback_data = «age:4» (toddler) / «age:6»
+    (kids). pick_storyteller_prompt() в llm.py выбирает промпт по числу.
+
+    hero и theme_key выставляем пустыми — downstream код умеет это
+    обрабатывать: PDF-заголовок становится «Ночная сказка для Маши»,
+    after_story_kb не показывает «продолжить про X».
+    """
+    try:
+        age = int(call.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await call.answer("Неверный возраст", show_alert=True)
+        return
+    if age not in (4, 6):
+        await call.answer("Возраст должен быть 4 или 6", show_alert=True)
+        return
+
+    # Сохраняем возраст + заглушки для hero/theme_key, чтобы _run_generation
+    # и downstream код не падали на отсутствующих ключах.
+    await state.update_data(child_age=age, hero="", theme_key="")
+    await call.answer()
+    # Сразу запускаем генерацию — больше шагов в визарде нет.
+    await _run_generation(call, state, bot)
 
 
 @router.callback_query(StoryWizard.waiting_hero, F.data.startswith("hero:"))
 async def cb_hero(call: CallbackQuery, state: FSMContext) -> None:
     raw = call.data.split(":", 1)[1]
     if raw == "custom":
-        await call.message.edit_text("Напишите, кто будет героем. Например: «дельфинёнок», «робот-садовник».")
+        await call.message.edit_text(
+            "🪶 Напишите, кого Вы хотели бы увидеть рядом с малышом сегодня.\n"
+            "<i>Например: «дельфинёнок», «робот-садовник», «бабушкин кот Барсик».</i>"
+        )
         await state.set_state(StoryWizard.waiting_hero)  # ждём текст
         await state.update_data(_await_custom_hero=True)
         await call.answer()
         return
     await state.update_data(hero=raw, _await_custom_hero=False)
-    await call.message.edit_text("Какая тема сказки?", reply_markup=theme_kb())
+    await call.message.edit_text(
+        "🕯 О чём пусть будет эта сказка? Выберите то, что сейчас ближе всего:",
+        reply_markup=theme_kb(),
+    )
     await state.set_state(StoryWizard.waiting_theme)
     await call.answer()
 
@@ -301,11 +347,14 @@ async def m_custom_hero(message: Message, state: FSMContext) -> None:
     # Очищаем от спецсимволов, обрезаем до 48, схлопываем пробелы
     hero = sanitize_user_text(message.text or "", max_len=48)
     if not hero or len(hero) < 2:
-        await message.answer("Напишите имя или название героя, до 48 символов "
+        await message.answer("Имя или название героя — до сорока восьми символов "
                              "(только буквы, цифры, пробелы, дефисы).")
         return
     await state.update_data(hero=hero, _await_custom_hero=False)
-    await message.answer("Какая тема сказки?", reply_markup=theme_kb())
+    await message.answer(
+        "🕯 О чём пусть будет эта сказка? Выберите то, что сейчас ближе всего:",
+        reply_markup=theme_kb(),
+    )
     await state.set_state(StoryWizard.waiting_theme)
 
 
@@ -323,10 +372,12 @@ async def cb_theme(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
 
 async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     """Запускает генерацию сказки с фиксированными параметрами:
-    length=medium (~4-5 минут чтения), полное качество (озвучка + картинка).
+    length=medium (~5-6 минут чтения), полное качество (PDF + ambient + 3 картинки).
 
     Вызывается из cb_theme (новая сказка) и cb_story_continue (антология).
-    Длину больше не спрашиваем — у нас один формат «полноценная сказка на ночь».
+    Длину больше не спрашиваем — стандарт: одна сказка на ночь, 5+ минут.
+    Параметр length оставлен в сигнатуре LLM для backward compat, но в
+    промпте длина зашита жёстко (см. SYSTEM_STORYTELLER → «ЖЁСТКАЯ ДЛИНА»).
     """
     length = "medium"
 
@@ -364,7 +415,10 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     data = await state.get_data()
     await state.clear()
 
-    await call.message.edit_text("Готовлю сказку… это займёт около 10–15 секунд.")
+    await call.message.edit_text(
+        "🕯 Зажигаю свечи в библиотеке. Сейчас наша сегодняшняя сказка "
+        "соберётся — пара минут, и я принесу её Вам."
+    )
     await call.answer()
 
     u = await _get_user(call.from_user.id)
@@ -381,108 +435,228 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # В премиум-стеке всегда полное качество (Azure + Sonnet + Recraft).
     full_quality = True
 
-    # ─ Контекст антологии: если это продолжение — даём LLM саммари прошлой сказки ─
-    # БЕЗ обещаний и тизеров — просто «те же герои, новый эпизод».
-    previous_summary: str | None = None
-    if data.get("continue_series"):
-        async with Session() as s:
-            last = (await s.execute(
-                select(Story)
-                .where(Story.user_id == u.id)
-                .order_by(Story.created_at.desc())
-                .limit(1)
-            )).scalar_one_or_none()
-        if last:
-            previous_summary = await summarize_story(last.text)
-            logger.info("Антология-продолжение для user=%s, last_story=%s", u.telegram_id, last.id)
+    # ─ Ротация архитектур: подкладываем модели подсказку, какая группа была ─
+    # в прошлый раз, чтобы сегодня выбрала другую. Если у юзера ещё не было
+    # сказок — last_story_group будет None, и сказочник выбирает свободно.
+    last_group = u.last_story_group
+    last_arch = u.last_story_architecture
+    if last_group:
+        logger.info(
+            "Ротация: предыдущая сказка для user=%s — группа %s, архитектура %s",
+            u.telegram_id, last_group, last_arch,
+        )
 
     try:
-        text = await generate_story(
+        text, story_group, story_architecture = await generate_story(
             child_name=data["child_name"],
             child_age=int(data.get("child_age") or 5),
             hero=data["hero"],
             theme_key=data["theme_key"],
             length=length,
             paid_quality=full_quality,
-            previous_summary=previous_summary,
+            last_story_group=last_group,
+            last_story_architecture=last_arch,
         )
     except Exception as e:
         logger.exception("Ошибка генерации сказки: %s", e)
-        await call.message.answer("Что-то пошло не так у сказочника. Попробуйте ещё раз через минуту.")
+        await call.message.answer(
+            "🕯 Простите — у нашего сказочника погасли все свечи в эту минуту. "
+            "Дайте ему собраться и попробуйте через пару минут заново."
+        )
         return
 
-    # Параллельно — сцена для картинки (если генерим картинку)
-    scene_task = asyncio.create_task(extract_scene(text)) if full_quality else None
+    # Сохраняем выбранную сегодня группу/архитектуру в БД юзера — для ротации
+    # на следующий день. Делаем СРАЗУ после успешной генерации, до длинной
+    # пайплайн обработки PDF/картинок (если что-то ниже упадёт — рот всё равно
+    # сдвинется, и завтра модель не повторит ту же группу).
+    if story_group:
+        async with Session() as s:
+            await s.execute(
+                update(User)
+                .where(User.id == u.id)
+                .values(
+                    last_story_group=story_group,
+                    last_story_architecture=story_architecture,
+                )
+            )
+            await s.commit()
 
-    # Озвучка стартует сразу без ожидания сцены — нам нужен только текст сказки
-    audio_task = asyncio.create_task(synthesize_speech(text)) if full_quality else None
+    # ─────────────────── Новый flow (USE_TTS=false): PDF-книжка + ambient ───────────────────
+    # Стандартный путь после рефакторинга: бот НЕ читает сказку голосом —
+    # делает PDF-книжку с 3 иллюстрациями и прикладывает фоновую музыку.
+    # Родитель сам читает ребёнку под музыку.
+    #
+    # Старый flow с TTS-озвучкой включается через USE_TTS=true в .env
+    # (оставлен для тестов / будущего возврата к озвучке).
+    from ..prompts import THEME_CHOICES
+    from ..services.bg_music import stitch_ambient
+    from ..services.image import generate_three_illustrations
+    from ..services.llm import extract_three_scenes
+    from ..services.pdf_book import build_story_pdf
+    from ..utils import accusative as _acc, hero_accusative as _hero_acc
 
     audio_path: Path | None = None
-    image_path: Path | None = None
-    image_task = None
-
-    # ─ Порядок отправки: КАРТИНКА → ТЕКСТ → АУДИО ─
-    # 1) Сначала ждём сцену, потом запускаем картинку
-    if full_quality:
-        scene = None
-        if scene_task:
-            try:
-                scene = await scene_task
-            except Exception as e:
-                logger.warning("scene_task failed: %s", e)
-        image_task = asyncio.create_task(
-            generate_cover(data["hero"], data["theme_key"], scene_description=scene)
-        )
-        await bot.send_chat_action(call.message.chat.id, "upload_photo")
-        try:
-            res = await image_task
-            if isinstance(res, Path):
-                image_path = res
-                await call.message.answer_photo(FSInputFile(str(image_path)))
-        except Exception as e:
-            logger.warning("Картинка не сгенерилась: %s", e)
-
-    # 2) Текст — основное содержимое. Юзеру отдаём БЕЗ эмо-маркеров
-    # ([laughs softly] и т.п. — они только для озвучки ElevenLabs).
-    # Разбиваем на части, если длиннее 4000 символов.
-    await bot.send_chat_action(call.message.chat.id, "typing")
+    image_path: Path | None = None  # для совместимости с БД (Story.image_path)
     display_text = strip_emo_markers(text)
-    for part in _split_for_telegram(display_text):
-        await call.message.answer(part)
 
-    # 3) Аудио — финальный аккорд, можно слушать ребёнку перед сном.
-    # Аудио идёт ПОСЛЕ текста, потому что синтез + микширование могут
-    # занять ещё 5-10 сек после получения текста. Чтобы пауза не казалась
-    # «непонятным зависанием», явно сообщаем юзеру что голос дописывается.
-    if audio_task:
-        # Если аудио ещё не готово к моменту отправки текста — показываем
-        # явное «голос идёт следом». Это убирает ощущение «бот завис».
-        status_msg = None
-        if not audio_task.done():
+    # Заголовок книжки. Раньше формировался из имени + героя + темы:
+    # «Сказка про Машу и робота Мику, о настоящей смелости». Но с новой
+    # моделью (сказочник сам выбирает героя и тему) у нас этих параметров
+    # нет — поэтому заголовок становится простым «Ночная сказка для Маши».
+    try:
+        title_phrase = THEME_CHOICES[data["theme_key"]][2] if data.get("theme_key") else ""
+    except (KeyError, IndexError):
+        title_phrase = ""
+    child_acc = _acc(data["child_name"])
+    hero_value = data.get("hero") or ""
+    if hero_value:
+        hero_acc = _hero_acc(hero_value)
+        book_title = f"Сказка про {child_acc} и {hero_acc}"
+    else:
+        # Сказочник сам выбрал героя — мы его имени не знаем, общий заголовок.
+        book_title = f"Ночная сказка для {child_acc}"
+    book_subtitle = title_phrase
+
+    if not config.use_tts:
+        # ─── Параллельная подготовка: 3 сцены LLM + ambient stitching ───
+        await bot.send_chat_action(call.message.chat.id, "typing")
+        scenes_task = asyncio.create_task(extract_three_scenes(text))
+        ambient_task = asyncio.create_task(stitch_ambient(target_minutes=7))
+
+        # Получаем 3 сцены (или None если LLM не настроен)
+        scenes = None
+        try:
+            scenes = await scenes_task
+        except Exception as e:
+            logger.warning("extract_three_scenes failed: %s", e)
+
+        # 3 иллюстрации параллельно (FAL Recraft)
+        await bot.send_chat_action(call.message.chat.id, "upload_photo")
+        illustrations = await generate_three_illustrations(
+            data["hero"], data["theme_key"], scenes=scenes,
+        )
+
+        # Собираем PDF
+        try:
+            pdf_path = build_story_pdf(
+                title=book_title,
+                subtitle=book_subtitle,
+                text=display_text,
+                cover_image=illustrations.get("opening"),
+                climax_image=illustrations.get("climax"),
+                ending_image=illustrations.get("ending"),
+            )
+        except Exception as e:
+            logger.exception("PDF build failed: %s", e)
+            pdf_path = None
+
+        # Для сохранения в БД — путь к обложке (Story.image_path остаётся в схеме)
+        cover_path = illustrations.get("opening")
+        if cover_path:
+            image_path = cover_path
+
+        # Сначала отправляем обложку как красивое превью
+        if cover_path and cover_path.exists():
             try:
-                status_msg = await call.message.answer(
-                    "🎙 <i>Записываю голос — ещё несколько секунд…</i>"
+                await call.message.answer_photo(FSInputFile(str(cover_path)))
+            except Exception as e:
+                logger.warning("Cover send failed: %s", e)
+
+        # Затем PDF-книжку
+        if pdf_path and pdf_path.exists():
+            try:
+                # Имя файла для юзера в Telegram — название сказки латиницей
+                # (Telegram плохо отображает кириллицу в filename на некоторых клиентах)
+                safe_name = f"{data['child_name']} & {data['hero']}.pdf".replace("/", "-")
+                await call.message.answer_document(
+                    FSInputFile(str(pdf_path), filename=safe_name),
+                    caption=(
+                        f"📖 <b>{book_title}</b>\n"
+                        f"<i>{book_subtitle}</i>\n\n"
+                        "Открывайте книжечку и читайте малышу вслух. "
+                        "А ниже — фоновая мелодия, под неё Ваш голос "
+                        "станет волшебным."
+                    ),
                 )
             except Exception as e:
-                logger.debug("status msg failed: %s", e)
-        await bot.send_chat_action(call.message.chat.id, "upload_voice")
+                logger.exception("PDF send failed: %s", e)
+
+        # И ambient mp3 в финале. ВАЖНО: путь к ambient НЕ записываем в audio_path
+        # — это фоновая музыка, не озвучка сказки. Story.audio_path в новой модели
+        # вообще не заполняется (мы не делаем TTS), а в /library показываем PDF.
         try:
-            res = await audio_task
-            if isinstance(res, Path):
-                audio_path = res
-                # Удаляем статус ПЕРЕД отправкой аудио — чтоб порядок был чистый
-                if status_msg:
-                    try:
-                        await status_msg.delete()
-                    except Exception:
-                        pass
+            res = await ambient_task
+            if res:
+                track_path, track_label = res
+                await bot.send_chat_action(call.message.chat.id, "upload_voice")
                 await call.message.answer_audio(
-                    FSInputFile(str(audio_path)),
-                    title=f"Сказка для {genitive(data['child_name'])}",
+                    FSInputFile(str(track_path), filename=f"{track_label}.mp3"),
+                    title=track_label,
                     performer=config.bot_brand,
+                    caption=(
+                        f"🎵 А вот и музыка для нашего вечера: "
+                        f"<i>{track_label}</i>.\n\n"
+                        f"Включайте, устраивайтесь поудобнее с малышом — "
+                        f"и пусть сказка начнётся."
+                    ),
                 )
         except Exception as e:
-            logger.warning("Аудио не сгенерилось: %s", e)
+            logger.warning("Ambient stitch/send failed: %s", e)
+
+    else:
+        # ─────────────────── Legacy flow (USE_TTS=true): озвучка как раньше ───────────────────
+        scene_task = asyncio.create_task(extract_scene(text)) if full_quality else None
+        audio_task = asyncio.create_task(synthesize_speech(text)) if full_quality else None
+
+        if full_quality:
+            scene = None
+            if scene_task:
+                try:
+                    scene = await scene_task
+                except Exception as e:
+                    logger.warning("scene_task failed: %s", e)
+            image_task = asyncio.create_task(
+                generate_cover(data["hero"], data["theme_key"], scene_description=scene)
+            )
+            await bot.send_chat_action(call.message.chat.id, "upload_photo")
+            try:
+                res = await image_task
+                if isinstance(res, Path):
+                    image_path = res
+                    await call.message.answer_photo(FSInputFile(str(image_path)))
+            except Exception as e:
+                logger.warning("Картинка не сгенерилась: %s", e)
+
+        await bot.send_chat_action(call.message.chat.id, "typing")
+        for part in _split_for_telegram(display_text):
+            await call.message.answer(part)
+
+        if audio_task:
+            status_msg = None
+            if not audio_task.done():
+                try:
+                    status_msg = await call.message.answer(
+                        "🎙 <i>Дописываю голос рассказчика — ещё несколько секунд…</i>"
+                    )
+                except Exception as e:
+                    logger.debug("status msg failed: %s", e)
+            await bot.send_chat_action(call.message.chat.id, "upload_voice")
+            try:
+                res = await audio_task
+                if isinstance(res, Path):
+                    audio_path = res
+                    if status_msg:
+                        try:
+                            await status_msg.delete()
+                        except Exception:
+                            pass
+                    await call.message.answer_audio(
+                        FSInputFile(str(audio_path)),
+                        title=f"Сказка для {genitive(data['child_name'])}",
+                        performer=config.bot_brand,
+                    )
+            except Exception as e:
+                logger.warning("Аудио не сгенерилось: %s", e)
 
     # Сохраняем сказку в БД, обновляем счётчики.
     # Колонка next_episode_teaser больше не используется (модель антологии вместо
@@ -492,9 +666,14 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         # Списываем из источника, который мы определили перед генерацией.
         # _consume_story_source проставит last_story_at там где нужен daily-лимит.
         _consume_story_source(u_db, source)
+        # child_name пишем только при первом разе (он редко меняется),
+        # а child_age — каждый раз, потому что:
+        # - возраст определяет выбор промпта (3-4 toddler / 5-6 kids);
+        # - у родителя может быть несколько детей разного возраста;
+        # - ребёнок может вырасти из toddler-промпта в kids-промпт.
         if not u_db.child_name:
             u_db.child_name = data["child_name"]
-            u_db.child_age = int(data.get("child_age") or 5)
+        u_db.child_age = int(data.get("child_age") or 5)
         story_obj = Story(
             user_id=u_db.id,
             child_name=data["child_name"],
@@ -526,54 +705,25 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         if has_more_free:
             child_name = data["child_name"]
             await call.message.answer(
-                f"🌙 Хорошего сна, {child_name}.\n\n"
-                f"Завтра вечером — новая сказка. До встречи перед сном.",
+                f"🌙 Тёплых снов, {child_name}.\n\n"
+                f"Завтра вечером, когда на небе зажгутся первые звёзды, "
+                f"новая сказка будет ждать Вас здесь. До нашей встречи.",
                 reply_markup=after_story_kb(story_id, has_sequel=True, hero=data["hero"], child_name=child_name),
             )
             from .feedback import maybe_ask_for_feedback
             await maybe_ask_for_feedback(call.message, call.from_user.id)
             return
 
-        # Закончилась бесплатная (для модели "первая бесплатно" — после первой же
-        # сказки). Показываем preview этой первой сказки и новый paywall.
-        async with Session() as s_demo:
-            demo_story = (await s_demo.execute(
-                select(Story)
-                .where(Story.user_id == u_db.id, Story.audio_path.isnot(None))
-                .order_by(Story.created_at.asc())
-                .limit(1)
-            )).scalar_one_or_none()
-
-        if demo_story and demo_story.audio_path:
-            try:
-                await call.message.answer(
-                    f"🎧 Помните, как звучала самая первая сказка для {genitive(demo_story.child_name)}? Вот она:"
-                )
-                await call.message.answer_audio(
-                    FSInputFile(demo_story.audio_path),
-                    title=f"Сказка для {genitive(demo_story.child_name)}",
-                    performer=config.bot_brand,
-                )
-            except Exception as e:
-                logger.warning("Не удалось отправить preview-аудио: %s", e)
-
-        await call.message.answer(
-            "🌙 Получилось?\n\n"
-            "Если ребёнок засыпал лучше — давайте сделаем ритуал постоянным. "
-            "Три варианта, выбирайте удобный:\n\n"
-            "• <b>Одна сказка — 99 ₽.</b> Без подписок и обязательств.\n"
-            "• <b>Пакет 15 сказок — 999 ₽</b> <i>(−34%)</i>. По одной в день, "
-            "хватит на две недели.\n"
-            "• <b>Подписка на месяц — 1485 ₽</b> <i>(−50%)</i>. Сказка каждый "
-            "вечер на месяц, отмена через /cancel_subscription в один клик.\n\n"
-            "В любом тарифе — озвучка тёплым женским голосом и обложка "
-            "как у настоящих книжек.",
-            reply_markup=paywall_kb(),
-        )
+        # Закончилась бесплатная (для модели "первая бесплатно" — после первой
+        # же сказки). НЕ показываем paywall в этот же момент — это давление.
+        # Юзер натолкнётся на paywall сам, когда захочет вторую сказку.
+        # Сейчас — только мягкий запрос критики за бонусную сказку.
+        from .feedback import maybe_ask_for_feedback
+        await maybe_ask_for_feedback(call.message, call.from_user.id)
         return
 
     await call.message.answer(
-        "Готово. Сладких снов!",
+        "🌙 Готово. Тёплых снов Вам и малышу.",
         reply_markup=after_story_kb(story_id, has_sequel=True, hero=data["hero"], child_name=data["child_name"]),
     )
 
@@ -581,5 +731,8 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
 @router.callback_query(F.data == "story:cancel")
 async def cb_cancel(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await call.message.edit_text("Хорошо, возвращаемся в меню.", reply_markup=main_menu_kb())
+    await call.message.edit_text(
+        "🕯 Хорошо. Возвращаемся в меню — буду ждать Вас здесь.",
+        reply_markup=main_menu_kb(),
+    )
     await call.answer()

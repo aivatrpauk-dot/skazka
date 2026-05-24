@@ -4,7 +4,9 @@ from aiogram.fsm.state import State, StatesGroup
 
 class StoryWizard(StatesGroup):
     waiting_child_name = State()
-    # waiting_child_age убран — наши сказки только для 3-6 лет, возраст не спрашиваем
+    # Возраст спрашиваем кнопками 3-4 / 5-6 — определяет выбор промпта
+    # (toddler-промпт для младших, основной с 25 архитектурами для старших).
+    waiting_child_age = State()
     waiting_hero = State()
     waiting_theme = State()
     # waiting_length убран — у нас фиксированный формат «одна полноценная

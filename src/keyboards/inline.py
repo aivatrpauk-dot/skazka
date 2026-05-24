@@ -16,17 +16,16 @@ def main_menu_kb(
     kb = InlineKeyboardBuilder()
     if continuation_hero and continuation_child:
         kb.button(
-            text=f"🔮 Новое приключение про {accusative(continuation_child)} и {hero_accusative(continuation_hero)}",
+            text=f"🕯 Новая глава про {accusative(continuation_child)} и {hero_accusative(continuation_hero)}",
             callback_data="story:continue",
         )
-        kb.button(text="🌟 Другие герои, другой мир", callback_data="story:new")
+        kb.button(text="✨ Совсем другая история", callback_data="story:new")
     else:
-        kb.button(text="Создать сказку", callback_data="story:new")
-    kb.button(text="Мои сказки", callback_data="lib:open")
-    kb.button(text="Подарить сказку", callback_data="gift:new")
-    kb.button(text="Подписка и тарифы", callback_data="bill:plans")
-    kb.button(text="Пригласить друга +3 сказки", callback_data="ref:share")
-    kb.button(text="Помощь", callback_data="faq:open")
+        kb.button(text="🪶 Сложить сегодняшнюю сказку", callback_data="story:new")
+    kb.button(text="📚 Наша книжная полка", callback_data="lib:open")
+    kb.button(text="🌟 Тарифы и подписка", callback_data="bill:plans")
+    kb.button(text="💌 Пригласить близких — сказка в подарок", callback_data="ref:share")
+    kb.button(text="🌙 Помощь и забота", callback_data="faq:open")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -37,6 +36,22 @@ def age_kb() -> InlineKeyboardMarkup:
         kb.button(text=label, callback_data=f"age:{val}")
     kb.button(text="◀ Назад", callback_data="story:cancel")
     kb.adjust(2, 2, 1)
+    return kb.as_markup()
+
+
+def age_kb() -> InlineKeyboardMarkup:
+    """Клавиатура выбора возраста: 3-4 или 5-6 лет.
+    Возраст определяет, какой промпт получит сказочник:
+    - 3-4 → toddler-промпт (8 архитектур, проще, обязательная счастливая развязка)
+    - 5-6 → основной промпт (25 архитектур, сюрреализм, философская грань)
+    В callback_data передаём середину диапазона (4 или 6), чтобы остался
+    одним числом в БД и совместим с существующей колонкой child_age.
+    """
+    kb = InlineKeyboardBuilder()
+    kb.button(text="👶 3-4 года", callback_data="age:4")
+    kb.button(text="🧒 5-6 лет", callback_data="age:6")
+    kb.button(text="◀ Назад", callback_data="story:cancel")
+    kb.adjust(2, 1)
     return kb.as_markup()
 
 
@@ -56,8 +71,10 @@ def theme_kb() -> InlineKeyboardMarkup:
     """Клавиатура выбора темы. 14 тем + кнопка «Назад» → 7 рядов по 2 + 1.
     Автоматически адаптируется если добавятся новые темы в THEME_CHOICES."""
     kb = InlineKeyboardBuilder()
-    for key, (label, _) in THEME_CHOICES.items():
-        kb.button(text=label, callback_data=f"theme:{key}")
+    # THEME_CHOICES хранит tuple из 3 элементов (label, desc, title_phrase),
+    # для кнопки нужен только label — берём первый.
+    for key, values in THEME_CHOICES.items():
+        kb.button(text=values[0], callback_data=f"theme:{key}")
     kb.button(text="◀ Назад", callback_data="story:cancel")
     # Распределяем темы по 2 в ряд + последняя строка с кнопкой «Назад» (1 в ряд).
     # Считаем динамически — если темы будут добавляться/убираться, всё подстроится.
@@ -80,20 +97,22 @@ def length_kb() -> InlineKeyboardMarkup:
 
 
 def paywall_kb(can_referral: bool = True) -> InlineKeyboardMarkup:
-    """Премиум-paywall: три тарифа от дешёвого к дорогому, потом подарок и реферал.
+    """Премиум-paywall: три тарифа от дешёвого к дорогому, потом реферал.
 
     Сортировка: разовая → пакет → подписка. Юзер сначала видит самую низкую
     цену, чтобы не отпугнуть. Скидки −34% и −50% подсвечены в названии —
     мгновенный сигнал «выгодно».
+
+    Подарочная сказка временно убрана из UI — фокусируемся на разовой/пакете/
+    подписке. Код gift handler оставлен, легко вернуть кнопку.
     """
     kb = InlineKeyboardBuilder()
-    kb.button(text="Одна сказка — 99 ₽", callback_data="bill:single")
-    kb.button(text="Пакет 15 сказок — 999 ₽ (−34%)", callback_data="bill:pack")
-    kb.button(text="Подписка на месяц — 1485 ₽ (−50%)", callback_data="bill:monthly")
-    kb.button(text="Подарить близкому — 199 ₽", callback_data="gift:new")
+    kb.button(text="🕯 Одна сказка на вечер — 99 ₽", callback_data="bill:single")
+    kb.button(text="📖 Пакет из 15 сказок — 999 ₽ (−34%)", callback_data="bill:pack")
+    kb.button(text="🌙 Сказка каждый вечер на месяц — 1485 ₽ (−50%)", callback_data="bill:monthly")
     if can_referral:
-        kb.button(text="Пригласить друга и получить +3", callback_data="ref:share")
-    kb.button(text="◀ В меню", callback_data="menu:main")
+        kb.button(text="💌 Пригласить близких", callback_data="ref:share")
+    kb.button(text="◀ Вернуться в меню", callback_data="menu:main")
     kb.adjust(1)
     return kb.as_markup()
 

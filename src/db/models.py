@@ -92,6 +92,13 @@ class User(Base):
     # одна история перед сном, не три. Защита от спама и формирование привычки.
     last_story_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Ротация архитектур сказки. Сказочник пишет первой строкой
+    # «Группа В, архитектура 11 — перевёртыш»; парсер вытягивает буквы группы
+    # (А/Б/В/Г) и номер архитектуры (1..25), складывает сюда. На следующей
+    # сказке мы передаём это в промпт, чтобы модель не повторила группу.
+    last_story_group: Mapped[str | None] = mapped_column(String(1))
+    last_story_architecture: Mapped[int | None] = mapped_column(Integer)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_active_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -50,6 +50,12 @@ INLINE_MIGRATIONS = [
     "ALTER TYPE payment_kind ADD VALUE IF NOT EXISTS 'pack_15'",
     "ALTER TYPE payment_kind ADD VALUE IF NOT EXISTS 'monthly_sub'",
     "ALTER TYPE payment_kind ADD VALUE IF NOT EXISTS 'monthly_renewal'",
+    # ─── Ротация архитектур сказки (May 2026) ───
+    # last_story_group хранит букву группы (А/Б/В/Г) предыдущей сказки,
+    # last_story_architecture — номер архитектуры (1..25). Парсятся из первой
+    # строки ответа модели и передаются обратно в промпт следующего вызова.
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_group VARCHAR(1)',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_architecture INTEGER',
 ]
 
 
