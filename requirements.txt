@@ -8,6 +8,11 @@ google-generativeai==0.8.3
 # Anthropic SDK для Claude Sonnet 4.6 (премиум LLM-провайдер).
 # Поддерживает prompt caching из коробки, нужна свежая версия.
 anthropic>=0.40.0
+# ReportLab для генерации PDF-книжки (обложка + текст + 3 иллюстрации).
+# Pure-Python без системных C-зависимостей, отлично работает с кириллицей
+# при условии что есть TTF-шрифт (грузим DejaVu Serif из ttf-bitstream-vera).
+reportlab>=4.0
+Pillow>=10.0
 sentry-sdk==2.18.0
 petrovich>=1.0,<2
 pymorphy3>=2.0,<3

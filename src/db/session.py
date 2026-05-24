@@ -56,6 +56,11 @@ INLINE_MIGRATIONS = [
     # строки ответа модели и передаются обратно в промпт следующего вызова.
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_group VARCHAR(1)',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_architecture INTEGER',
+    # ─── PDF в библиотеке (May 2026) ───
+    # Раньше Story.image_path использовался как обложка + библиотека отдавала
+    # текст+картинку+аудио. Теперь продукт чище: одна PDF-книжка. Колонка
+    # pdf_path хранит путь к ней.
+    'ALTER TABLE stories ADD COLUMN IF NOT EXISTS pdf_path VARCHAR(256)',
 ]
 
 

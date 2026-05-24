@@ -40,21 +40,27 @@ router = Router(name="billing")
 # Подсветка экономии (−34%, −50%) — главный triggers для конверсии в пакет/подписку.
 
 PLANS_TEXT = (
-    "<b>Тарифы</b>\n\n"
-    "🌙 <b>Бесплатно</b> — {free} сказка в подарок при первом запуске.\n\n"
-    "✨ <b>Одна сказка — 99 ₽</b>\n"
-    "Разовая покупка. Никаких подписок, без ограничений по дням.\n\n"
-    "📚 <b>Пакет 15 сказок — 999 ₽</b> <i>(−34%)</i>\n"
-    "Одна сказка в день в течение двух недель. Срок пакета не сгорает —\n"
-    "пользуйтесь когда хочется. Экономия 486 ₽ против штучной цены.\n\n"
-    "🌟 <b>Подписка на месяц — 1485 ₽</b> <i>(−50%)</i>\n"
-    "Сказка каждый день на месяц. Автопродление, отмена в любой момент.\n"
-    "Экономия 1485 ₽ против штучной цены.\n\n"
-    "🎁 <b>Подарок близким — 199 ₽</b>\n"
-    "Одна персональная сказка под имя ребёнка — отправляете ссылкой.\n\n"
-    "Во всех тарифах: озвучка тёплым женским голосом + обложка-картинка к каждой сказке.\n\n"
-    "<i>Нажимая «Купить» / «Подписаться», вы принимаете публичную оферту "
-    "и даёте согласие на обработку персональных данных. Подробно — /legal</i>"
+    "<b>🌟 Тарифы</b>\n\n"
+    "🕯 <b>Знакомство — бесплатно</b>\n"
+    "{free} сказка в подарок при первом запуске.\n\n"
+    "🕯 <b>Одна сказка на вечер — 99 ₽</b>\n"
+    "Разовая покупка. Без обязательств и подписок — просто одна тёплая "
+    "история перед сном.\n\n"
+    "📖 <b>Пакет из 15 сказок — 999 ₽</b> <i>(−34%)</i>\n"
+    "Две недели вечернего ритуала. Сроки не сгорают — пользуйтесь "
+    "когда сердце попросит.\n\n"
+    "🌙 <b>Сказка каждый вечер на месяц — 1485 ₽</b> <i>(−50%)</i>\n"
+    "Одна сказка ежедневно тридцать дней. Продление автоматическое, "
+    "отмена — в один клик.\n\n"
+    "<b>В каждой сказке для Вас приготовлено:</b>\n"
+    "📖 PDF-книжечка с тремя авторскими иллюстрациями — открыли и "
+    "читаете малышу вслух\n"
+    "🌙 Персональная поучительная сказка на ночь — Ваш ребёнок в ней "
+    "главный герой\n"
+    "👩‍👧 А главное — читаете Вы. Не машина. Малыш засыпает под "
+    "Ваш голос, и это самое тёплое, что может быть\n\n"
+    "<i>Соглашаясь продолжить, Вы принимаете нашу публичную оферту "
+    "и даёте согласие на обработку личных данных. Подробности — /legal</i>"
 )
 
 
@@ -68,10 +74,10 @@ async def cb_plans(call: CallbackQuery) -> None:
     banner = ""
     if discount_pct > 0 and partner is not None:
         banner = (
-            f"🎁 <b>Спецпредложение от {partner.name}</b>\n"
-            f"Первая покупка — со скидкой −{discount_pct}%.\n"
-            f"Например, подписка на месяц = {monthly_amount/100:.0f} ₽ "
-            f"вместо {config.price_monthly_kopecks/100:.0f} ₽.\n\n"
+            f"💌 <b>Особое приглашение от {partner.name}</b>\n"
+            f"Ваша первая покупка — со скидкой −{discount_pct}%.\n"
+            f"Например, месяц сказок = {monthly_amount/100:.0f} ₽ "
+            f"вместо обычных {config.price_monthly_kopecks/100:.0f} ₽.\n\n"
         )
     await call.message.edit_text(
         banner + PLANS_TEXT.format(free=config.free_story_limit),
@@ -151,8 +157,16 @@ async def on_paid(message: Message, bot: Bot) -> None:
     # Партнёрская комиссия (если юзер пришёл от партнёра)
     await attribute_payment_to_partner(payment, user, bot)
 
-    # Бонус приглашающему: +5 сказок только при первой подписке (monthly или legacy)
-    if kind in (PaymentKind.monthly_sub, PaymentKind.subscription):
+    # Реферальный бонус: +config.referral_bonus (по умолчанию 1) приглашающему
+    # ТОЛЬКО при первой успешной оплате друга (любого тарифа: single/pack/monthly).
+    # Просто переход по ссылке без оплаты бонуса не даёт. Один друг — один бонус,
+    # повторные оплаты того же друга бонус не дублируют (защита flag bonus_granted).
+    if kind in (
+        PaymentKind.single_story,
+        PaymentKind.pack_15,
+        PaymentKind.monthly_sub,
+        PaymentKind.subscription,  # legacy
+    ):
         async with Session() as s:
             ref = (
                 await s.execute(select(Referral).where(Referral.invited_id == user.id))
@@ -160,13 +174,18 @@ async def on_paid(message: Message, bot: Bot) -> None:
             if ref and not ref.bonus_granted:
                 inviter = await s.get(User, ref.inviter_id)
                 if inviter:
-                    inviter.bonus_stories = (inviter.bonus_stories or 0) + 5
+                    bonus = config.referral_bonus
+                    inviter.bonus_stories = (inviter.bonus_stories or 0) + bonus
                     ref.bonus_granted = True
                     await s.commit()
                     try:
+                        suffix = "сказка" if bonus == 1 else "сказки"
                         await bot.send_message(
                             inviter.telegram_id,
-                            "Ваш друг оформил подписку — вам +5 бонусных сказок. Спасибо!",
+                            f"💌 Радостная новость: близкий человек, "
+                            f"которого Вы пригласили, заказал свою первую "
+                            f"сказку. От души благодарим — и оставляем для "
+                            f"Вас +{bonus} бонусную {suffix} на счёте.",
                         )
                     except Exception:
                         pass
@@ -175,33 +194,37 @@ async def on_paid(message: Message, bot: Bot) -> None:
     if kind in (PaymentKind.monthly_sub, PaymentKind.subscription):
         until = user.subscription_until.strftime("%d.%m.%Y") if user.subscription_until else "—"
         await message.answer(
-            f"🎉 Подписка активна до <b>{until}</b>.\n"
-            "Каждый день — новая сказка с озвучкой и обложкой.\n\n"
-            "Создать сказку:",
+            f"🌙 Чудесно — теперь сказка ждёт Вас каждый вечер до "
+            f"<b>{until}</b>.\n"
+            "Просто загляните сюда, когда наступит время ритуала.\n\n"
+            "Можем сложить первую прямо сегодня:",
             reply_markup=main_menu_kb(),
         )
     elif kind == PaymentKind.pack_15:
         await message.answer(
-            f"📚 Пакет активирован! У вас <b>{user.pack_stories_remaining}</b> сказок "
-            f"(одна в день).\n\n"
-            "Создать сказку:",
+            f"📖 Ваш пакет из <b>{user.pack_stories_remaining}</b> сказок "
+            f"бережно отложен на полке. Открывайте по одной в день, "
+            f"когда сердце попросит — сроки не сгорят.\n\n"
+            "Может, начнём прямо сегодня?",
             reply_markup=main_menu_kb(),
         )
     elif kind == PaymentKind.single_story:
         await message.answer(
-            "✨ Оплата прошла! Сейчас сделаю вашу сказку.\n\n"
-            "Создать сказку:",
+            "🕯 Свечи зажжены, перо обмакнуто в чернила. Сейчас наша "
+            "сказочница сложит для Вас сегодняшнюю историю.\n\n"
+            "Если у Вас уже есть герой на примете — приступим:",
             reply_markup=main_menu_kb(),
         )
     elif kind == PaymentKind.gift:
         await message.answer(
-            "🎁 Подарок оплачен. Готовлю сказку — это займёт около 15–20 секунд."
+            "💌 Ваш подарок принят. Готовлю особую сказку — это займёт "
+            "пару тёплых минут."
         )
         from .gift import complete_gift_after_payment
         await complete_gift_after_payment(bot, message.from_user.id)
     else:
         await message.answer(
-            "Оплата прошла. Создать сказку:",
+            "Спасибо. Можем приступить к сегодняшней сказке:",
             reply_markup=main_menu_kb(),
         )
 
@@ -215,8 +238,9 @@ async def cancel_sub(message: Message) -> None:
         await s.commit()
     until = u.subscription_until.strftime("%d.%m.%Y") if u.subscription_until else "—"
     await message.answer(
-        f"Подписка отменена. Доступ к ежедневным сказкам сохранится до {until}.\n"
-        "Дальше списаний не будет."
+        f"🕯 Хорошо. Сказки будут приходить как и прежде до "
+        f"<b>{until}</b>. После — без лишних слов и списаний.\n\n"
+        f"Всегда будем рады, если решите вернуться."
     )
 
 
@@ -228,19 +252,25 @@ async def request_refund(message: Message) -> None:
         u = (await s.execute(select(User).where(User.telegram_id == message.from_user.id))).scalar_one()
     if not u.subscription_until:
         await message.answer(
-            "Активной подписки не вижу. Если разовая или пакет — напишите /support, разберёмся."
+            "🕯 Активной подписки у нас за Вами не числится. "
+            "Если речь о разовой сказке или пакете — напишите нам "
+            "через /support, обязательно разберёмся."
         )
         return
     days = (dt.datetime.now(dt.timezone.utc) - (u.subscription_until - dt.timedelta(days=30))).days
     if days > 7:
         await message.answer(
-            "Возврат без вопросов — только в первые 7 дней после оплаты. "
-            "Сейчас напишите /support, разберёмся в индивидуальном порядке."
+            "🕯 По нашему обычаю возврат без лишних вопросов возможен "
+            "только в первые семь дней после оплаты. Сейчас напишите "
+            "/support — рассмотрим Вашу историю индивидуально и постараемся "
+            "найти доброе решение."
         )
         return
     await message.answer(
-        "Хорошо. Возврат оформим в течение 1–2 рабочих дней через ЮKassa. "
-        "Подписка отключена. Спасибо, что попробовали!"
+        "🕯 Конечно. Возврат оформим в течение одного-двух рабочих дней — "
+        "средства вернутся на ту же карту через ЮKassa. Подписка отключена. "
+        "Благодарим, что попробовали — будем очень рады, если когда-нибудь "
+        "решите вернуться."
     )
     async with Session() as s:
         u = (await s.execute(select(User).where(User.telegram_id == message.from_user.id))).scalar_one()

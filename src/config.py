@@ -27,6 +27,16 @@ def _float(key: str, default: float) -> float:
     return float(raw) if raw else default
 
 
+def _bool(key: str, default: bool) -> bool:
+    """Парсит булевый env: true/1/yes/on → True, false/0/no/off → False, иначе default."""
+    raw = os.getenv(key, "").strip().lower()
+    if raw in ("true", "1", "yes", "on"):
+        return True
+    if raw in ("false", "0", "no", "off"):
+        return False
+    return default
+
+
 @dataclass(frozen=True)
 class Config:
     # Telegram
@@ -56,7 +66,12 @@ class Config:
     gemini_model_free: str = field(default_factory=lambda: _env("GEMINI_MODEL_FREE", "gemini-2.5-flash-lite"))
     gemini_model_paid: str = field(default_factory=lambda: _env("GEMINI_MODEL_PAID", "gemini-2.5-flash"))
 
-    # ─────────────── TTS-провайдер ───────────────
+    # ─────────────── TTS (озвучка) ───────────────
+    # USE_TTS=false → новый продукт: PDF-книжка + ambient музыка, родитель сам читает.
+    # USE_TTS=true → старый режим с аудио-озвучкой через TTS_PROVIDER.
+    # По дефолту выключено — это новое позиционирование продукта.
+    use_tts: bool = field(default_factory=lambda: _bool("USE_TTS", False))
+
     # azure (default, ~7 ₽/сказка) → yandex (fallback) → elevenlabs (last resort)
     tts_provider: str = field(default_factory=lambda: _env("TTS_PROVIDER", "azure"))
 
@@ -91,12 +106,37 @@ class Config:
     image_model: str = field(default_factory=lambda: _env("IMAGE_MODEL", "recraft-v3"))
     fal_api_key: str = field(default_factory=lambda: _env("FAL_KEY", ""))
 
+    # Recraft Direct API — ходим напрямую в api.recraft.ai, без FAL-обёртки.
+    # FAL раньше использовали как универсальную обёртку под Flux/Recraft, но
+    # теперь мы только на Recraft, и прямой API даёт полный набор фич (custom
+    # styles!) и убирает посредника. RECRAFT_API_KEY получается на recraft.ai
+    # → Profile → API. Используется для:
+    #   1) тренировки custom style (scripts/create_recraft_style.py);
+    #   2) ежедневной генерации картинок (image.py → _generate_recraft_direct).
+    # Если RECRAFT_API_KEY пуст — image.py упадёт обратно на FAL (legacy).
+    recraft_api_key: str = field(default_factory=lambda: _env("RECRAFT_API_KEY", ""))
+
+    # Recraft Custom Style — наш натренированный приватный стиль.
+    # Создаётся одноразово скриптом scripts/create_recraft_style.py
+    # (тренируется на картинках из style_references/). Если задан —
+    # image.py передаёт его в Recraft вместо встроенного preset'а
+    # (digital_illustration/hand_drawn и т.п.) и модель рисует в нашем
+    # натренированном книжном стиле. Если пусто — фолбэк на hand_drawn.
+    recraft_style_id: str = field(default_factory=lambda: _env("RECRAFT_STYLE_ID", ""))
+
     # Legacy: если задан FAL_MODEL — переопределяет image_model (backward compat).
     fal_model_legacy: str = field(default_factory=lambda: _env("FAL_MODEL", ""))
 
     # Suno V5 через kie.ai — для генерации фоновых инструментальных колыбельных
     kie_api_key: str = field(default_factory=lambda: _env("KIE_API_KEY", ""))
     suno_model: str = field(default_factory=lambda: _env("SUNO_MODEL", "V5"))
+
+    # Кредиты для музыки в PDF — если используешь Kevin MacLeod (CC BY 3.0)
+    # или другие треки требующие атрибуции, положи строку сюда. Будет показана
+    # внизу последней страницы книжки. Пример:
+    #   MUSIC_CREDITS=Music: Kevin MacLeod (incompetech.com), licensed under CC BY 3.0
+    # Для Pixabay / public domain треков можно оставить пустым.
+    music_credits: str = field(default_factory=lambda: _env("MUSIC_CREDITS", ""))
 
     # FusionBrain / Kandinsky (legacy fallback на случай если FAL ляжет)
     fusionbrain_api_key: str = field(default_factory=lambda: _env("FUSIONBRAIN_API_KEY", ""))
@@ -108,7 +148,10 @@ class Config:
     # ─────────────── Лимиты и тарифы ───────────────
     # Новая бесплатная норма: ОДНА сказка триал. Дальше paywall.
     free_story_limit: int = field(default_factory=lambda: _int("FREE_STORY_LIMIT", 1))
-    referral_bonus: int = field(default_factory=lambda: _int("REFERRAL_BONUS", 3))
+    # Реферальный бонус: даётся приглашающему ТОЛЬКО когда приглашённый юзер
+    # сделает первую успешную оплату (любого тарифа: single/pack/monthly).
+    # Просто переход по ?start=ref_XXX бонуса больше не даёт.
+    referral_bonus: int = field(default_factory=lambda: _int("REFERRAL_BONUS", 1))
 
     # Разовая сказка — 99 ₽
     price_single_kopecks: int = field(default_factory=lambda: _int("PRICE_SINGLE_KOPECKS", 9900))

@@ -122,6 +122,11 @@ class Story(Base):
     text: Mapped[str] = mapped_column(Text)
     audio_path: Mapped[str | None] = mapped_column(String(256))
     image_path: Mapped[str | None] = mapped_column(String(256))
+    # Путь к итоговой PDF-книжке (3 иллюстрации внутри + текст). Сохраняется
+    # после успешной генерации. Библиотека отдаёт этот файл при открытии
+    # сказки. image_path/audio_path остаются для обратной совместимости со
+    # старыми записями.
+    pdf_path: Mapped[str | None] = mapped_column(String(256))
 
     is_paid_quality: Mapped[bool] = mapped_column(Boolean, default=False)
     is_gift: Mapped[bool] = mapped_column(Boolean, default=False)

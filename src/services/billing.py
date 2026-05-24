@@ -148,7 +148,8 @@ async def create_single_invoice(bot: Bot, chat_id: int, user_id: int) -> None:
         title = f"Одна сказка (−{discount_pct}%)"
         item_label = f"Сказка — −{discount_pct}% от {partner.name}"
         description = (
-            f"Одна персональная сказка с озвучкой и обложкой.\n"
+            f"Одна персональная поучительная сказка на ночь: PDF-книжка с "
+            f"тремя авторскими иллюстрациями. Ваш ребёнок в ней главный герой.\n"
             f"🎁 Скидка партнёра: {amount/100:.0f} ₽ вместо "
             f"{config.price_single_kopecks/100:.0f} ₽."
         )
@@ -156,7 +157,10 @@ async def create_single_invoice(bot: Bot, chat_id: int, user_id: int) -> None:
     else:
         title = "Одна сказка"
         item_label = "Сказка «Сказка»"
-        description = "Одна персональная сказка с озвучкой и обложкой"
+        description = (
+            "Одна персональная поучительная сказка на ночь: PDF-книжка с "
+            "тремя авторскими иллюстрациями. Ваш ребёнок — главный герой."
+        )
         receipt_desc = "Одна сказка «Сказка»"
 
     payload = f"{PAYLOAD_SINGLE}:{user_id}:{uuid.uuid4().hex[:12]}"
@@ -177,7 +181,8 @@ async def create_pack_invoice(bot: Bot, chat_id: int, user_id: int) -> None:
         title = f"Пакет {n} сказок (−{discount_pct}%)"
         item_label = f"Пакет {n} сказок — −{discount_pct}% от {partner.name}"
         description = (
-            f"Пакет {n} сказок (одна сказка в день). С озвучкой и обложкой.\n"
+            f"Пакет {n} персональных поучительных сказок на ночь. Каждая — "
+            f"PDF-книжка с тремя авторскими иллюстрациями.\n"
             f"🎁 Скидка партнёра: {amount/100:.0f} ₽ вместо "
             f"{config.price_pack_kopecks/100:.0f} ₽."
         )
@@ -186,8 +191,9 @@ async def create_pack_invoice(bot: Bot, chat_id: int, user_id: int) -> None:
         title = f"Пакет {n} сказок"
         item_label = f"Пакет {n} сказок «Сказка»"
         description = (
-            f"Пакет {n} сказок (одна в день) — экономия 34% против штучной цены.\n"
-            f"С озвучкой и обложкой. Срока годности у пакета нет."
+            f"Пакет {n} персональных поучительных сказок на ночь — экономия "
+            f"34% против штучной цены. Каждая — PDF-книжка с тремя авторскими "
+            f"иллюстрациями. Срока годности нет."
         )
         receipt_desc = f"Пакет {n} сказок «Сказка»"
 
@@ -208,7 +214,8 @@ async def create_monthly_invoice(bot: Bot, chat_id: int, user_id: int) -> None:
         title = f"Подписка «Сказка» 1 месяц (−{discount_pct}%)"
         item_label = f"Подписка 1 месяц — −{discount_pct}% от {partner.name}"
         description = (
-            f"Сказка каждый день на месяц. С озвучкой и обложкой.\n"
+            f"Персональная поучительная сказка на ночь каждый день на месяц. "
+            f"PDF-книжка с тремя авторскими иллюстрациями.\n"
             f"🎁 Скидка партнёра: первый месяц {amount/100:.0f} ₽ вместо "
             f"{config.price_monthly_kopecks/100:.0f} ₽. Дальше — обычная цена "
             f"{config.price_monthly_kopecks/100:.0f} ₽/мес. Отмена в любой момент."
@@ -218,8 +225,9 @@ async def create_monthly_invoice(bot: Bot, chat_id: int, user_id: int) -> None:
         title = "Подписка «Сказка» 1 месяц"
         item_label = "Подписка «Сказка» 1 месяц"
         description = (
-            "Сказка каждый день на месяц — экономия 50% против штучной цены.\n"
-            "С озвучкой и обложкой. Отмена в любой момент."
+            "Персональная поучительная сказка на ночь каждый день на месяц "
+            "— экономия 50% против штучной. PDF-книжка с тремя авторскими "
+            "иллюстрациями. Отмена в любой момент."
         )
         receipt_desc = "Подписка «Сказка» 1 месяц"
 
@@ -247,7 +255,7 @@ async def create_gift_invoice(bot: Bot, chat_id: int, user_id: int, recipient: s
     await _send_invoice(
         bot, chat_id,
         title=f"Подарочная сказка для {recipient}",
-        description="Готовая сказка с озвучкой и обложкой — отправим ссылкой",
+        description="Готовая персональная сказка как PDF-книжка с тремя иллюстрациями — отправим ссылкой",
         payload=payload,
         amount_kopecks=config.price_gift_kopecks,
         receipt_desc=f"Подарочная сказка для {recipient}",

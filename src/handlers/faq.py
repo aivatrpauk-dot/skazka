@@ -65,7 +65,10 @@ def _faq_kb():
 
 @router.callback_query(F.data == "faq:open")
 async def cb_open(call: CallbackQuery) -> None:
-    await call.message.edit_text("Выбери вопрос:", reply_markup=_faq_kb())
+    await call.message.edit_text(
+        "🌙 Чем могу помочь? Выберите, что Вас интересует:",
+        reply_markup=_faq_kb(),
+    )
     await call.answer()
 
 
@@ -95,7 +98,10 @@ async def cmd_delete(message: Message) -> None:
         )).scalar_one_or_none()
 
         if not u:
-            await message.answer("Записи о вас не нашёл. Начните с /start.")
+            await message.answer(
+                "🕯 Записи о Вас в нашем замке не нашлось. Начните с /start — "
+                "и я Вас встречу."
+            )
             return
 
         if is_admin:
@@ -120,9 +126,11 @@ async def cmd_delete(message: Message) -> None:
         )
     else:
         await message.answer(
-            "Все ваши персональные данные удалены: имя ребёнка, никнейм, способ оплаты, "
-            "реферальная ссылка.\n\n"
-            "Запись о Telegram-аккаунте сохраняется для предотвращения злоупотреблений "
-            "бесплатным триалом. Если нужно полное удаление по 152-ФЗ — напишите /support, "
-            "сделаем в течение 24 часов."
+            "🕯 Все Ваши личные данные нами стёрты: имя малыша, "
+            "имя пользователя, способ оплаты, реферальная ссылка — всё "
+            "вычеркнуто из наших книг.\n\n"
+            "Запись о Telegram-аккаунте сохраняется только во избежание "
+            "повторного использования бесплатной первой сказки. Если нужно "
+            "полное удаление по 152-ФЗ — напишите в /support, всё устроим "
+            "в течение суток."
         )

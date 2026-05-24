@@ -161,8 +161,8 @@ async def m_personal_note(message: Message, state: FSMContext) -> None:
         f"Главный герой: <b>{data['hero']}</b>\n"
         f"Тема: <b>{theme_label}</b>\n"
         f"Послание от вас:\n<i>{note}</i>\n\n"
-        "После оплаты бот сгенерирует персональную сказку с озвучкой и обложкой "
-        "и пришлёт её сюда — вы перешлёте близким.\n\n"
+        "После оплаты бот сложит персональную PDF-книжечку с тремя "
+        "иллюстрациями и пришлёт её сюда — Вы перешлёте близким.\n\n"
         "Стоимость: <b>199 ₽</b>."
     )
     await message.answer(summary, reply_markup=_gift_summary_kb())

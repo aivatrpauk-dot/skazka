@@ -453,7 +453,6 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # Старый flow с TTS-озвучкой включается через USE_TTS=true в .env
     # (оставлен для тестов / будущего возврата к озвучке).
     from ..prompts import THEME_CHOICES
-    from ..services.bg_music import stitch_ambient
     from ..services.image import generate_three_illustrations
     from ..services.llm import extract_three_scenes
     from ..services.pdf_book import build_story_pdf
@@ -484,10 +483,11 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     book_subtitle = title_phrase
 
     if not config.use_tts:
-        # ─── Параллельная подготовка: 3 сцены LLM + ambient stitching ───
+        # ─── Параллельная подготовка: только 3 сцены LLM ───
+        # Фоновая музыка убрана — продукт чище и проще: один PDF без
+        # сопровождения, родитель сам читает в своём ритме.
         await bot.send_chat_action(call.message.chat.id, "typing")
         scenes_task = asyncio.create_task(extract_three_scenes(text))
-        ambient_task = asyncio.create_task(stitch_ambient(target_minutes=7))
 
         # Получаем 3 сцены (или None если LLM не настроен)
         scenes = None
@@ -537,37 +537,13 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
                 await call.message.answer_document(
                     FSInputFile(str(pdf_path), filename=safe_name),
                     caption=(
-                        f"📖 <b>{book_title}</b>\n"
-                        f"<i>{book_subtitle}</i>\n\n"
-                        "Открывайте книжечку и читайте малышу вслух. "
-                        "А ниже — фоновая мелодия, под неё Ваш голос "
-                        "станет волшебным."
+                        f"📖 <b>{book_title}</b>\n\n"
+                        "Открывайте книжечку и читайте малышу вслух — "
+                        "это и есть тёплый ритуал перед сном."
                     ),
                 )
             except Exception as e:
                 logger.exception("PDF send failed: %s", e)
-
-        # И ambient mp3 в финале. ВАЖНО: путь к ambient НЕ записываем в audio_path
-        # — это фоновая музыка, не озвучка сказки. Story.audio_path в новой модели
-        # вообще не заполняется (мы не делаем TTS), а в /library показываем PDF.
-        try:
-            res = await ambient_task
-            if res:
-                track_path, track_label = res
-                await bot.send_chat_action(call.message.chat.id, "upload_voice")
-                await call.message.answer_audio(
-                    FSInputFile(str(track_path), filename=f"{track_label}.mp3"),
-                    title=track_label,
-                    performer=config.bot_brand,
-                    caption=(
-                        f"🎵 А вот и музыка для нашего вечера: "
-                        f"<i>{track_label}</i>.\n\n"
-                        f"Включайте, устраивайтесь поудобнее с малышом — "
-                        f"и пусть сказка начнётся."
-                    ),
-                )
-        except Exception as e:
-            logger.warning("Ambient stitch/send failed: %s", e)
 
     else:
         # ─────────────────── Legacy flow (USE_TTS=true): озвучка как раньше ───────────────────
@@ -653,6 +629,7 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
             text=display_text,
             audio_path=str(audio_path) if audio_path else None,
             image_path=str(image_path) if image_path else None,
+            pdf_path=str(pdf_path) if pdf_path else None,
             is_paid_quality=full_quality,
         )
         s.add(story_obj)

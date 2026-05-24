@@ -1,5 +1,7 @@
-"""Архив «Мои сказки»."""
+"""Архив «Мои сказки» — отдаёт PDF-книжки, сохранённые при генерации."""
 from __future__ import annotations
+
+import os
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, FSInputFile
@@ -23,13 +25,23 @@ async def cb_open(call: CallbackQuery) -> None:
         ).scalars().all()
     if not rows:
         await call.message.edit_text(
-            "Пока нет сохранённых сказок. Создайте первую — её можно будет переслушать в любой момент.",
+            "📚 Полка пока пустует — Вы ещё не сочинили ни одной сказки. "
+            "Давайте начнём первую, и я бережно сохраню её здесь навсегда.",
             reply_markup=main_menu_kb(),
         )
         await call.answer()
         return
-    items = [(st.id, f"{st.created_at:%d.%m %H:%M} — {st.child_name}, {st.hero}") for st in rows]
-    await call.message.edit_text("Ваш архив сказок:", reply_markup=library_kb(items))
+    # Названия в формате «Сказка для Маши, 24 мая». Героя/тему больше не
+    # упоминаем — сказочник их выбирает сам, юзеру это не нужно знать.
+    items = [
+        (st.id, f"Сказка для {genitive(st.child_name)}, {st.created_at:%d.%m}")
+        for st in rows
+    ]
+    await call.message.edit_text(
+        "📚 Ваша книжная полка. Нажмите любую — пришлю PDF, который "
+        "можно открыть и читать снова:",
+        reply_markup=library_kb(items),
+    )
     await call.answer()
 
 
@@ -45,18 +57,23 @@ async def cb_show(call: CallbackQuery) -> None:
         if st.user_id != u.id:
             await call.answer("Эта сказка не из вашего архива", show_alert=True)
             return
-    await call.message.answer(st.text)
-    if st.image_path:
+
+    # Приоритет: PDF. Если есть и файл на диске — отдаём.
+    if st.pdf_path and os.path.exists(st.pdf_path):
+        safe_name = f"Сказка для {genitive(st.child_name)} {st.created_at:%d-%m}.pdf"
         try:
-            await call.message.answer_photo(FSInputFile(st.image_path))
-        except Exception:
-            pass
-    if st.audio_path:
-        try:
-            await call.message.answer_audio(
-                FSInputFile(st.audio_path),
-                title=f"Сказка для {genitive(st.child_name)}",
+            await call.message.answer_document(
+                FSInputFile(st.pdf_path, filename=safe_name),
+                caption=f"📖 Сказка для {genitive(st.child_name)}",
             )
+            await call.answer()
+            return
         except Exception:
             pass
+
+    # Fallback для старых сказок без сохранённого PDF (до миграции). Отдаём
+    # текст — лучше так, чем ничего.
+    await call.message.answer(
+        f"📖 Сказка для {genitive(st.child_name)}\n\n{st.text}"
+    )
     await call.answer()

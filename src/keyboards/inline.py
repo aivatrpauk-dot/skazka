@@ -9,18 +9,18 @@ def main_menu_kb(
     continuation_hero: str | None = None,
     continuation_child: str | None = None,
 ) -> InlineKeyboardMarkup:
-    """Главное меню. Параметры continuation_* оставлены в сигнатуре для
-    обратной совместимости с местами, которые их передают, но больше не
-    используются — концепция «продолжения серии про того же героя» убрана:
-    каждая сказка теперь самостоятельная и сюжетно непредсказуемая.
+    """Главное меню. Минимальный набор: новая сказка, библиотека, подарок.
+    Параметры continuation_* — legacy, игнорируются.
+
+    Убрано:
+    - «🌟 Тарифы и подписка» — теперь только в paywall и в левом меню (/plans).
+    - «🌙 Помощь и забота» — оставлена команда /support в левом меню.
     """
-    _ = continuation_hero, continuation_child  # legacy, не используются
+    _ = continuation_hero, continuation_child
     kb = InlineKeyboardBuilder()
     kb.button(text="🪶 Сложить сегодняшнюю сказку", callback_data="story:new")
     kb.button(text="📚 Наша книжная полка", callback_data="lib:open")
-    kb.button(text="🌟 Тарифы и подписка", callback_data="bill:plans")
     kb.button(text="💌 Пригласить близких — сказка в подарок", callback_data="ref:share")
-    kb.button(text="🌙 Помощь и забота", callback_data="faq:open")
     kb.adjust(1)
     return kb.as_markup()
 

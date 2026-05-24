@@ -705,16 +705,15 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # чтобы понять что рисовать. Наша задача — только сказать КАК (стиль).
 
 _IMAGE_DNA = (
-    "Hand-painted children's storybook art. Watercolor + gouache, "
-    "paper texture, ink lines, painterly warmth. Tone: classic "
-    "European kids' book — RESTRAINED, never sugary. Characters "
-    "stylized but real: NO kawaii, no doll-eyes, no blush spots, no "
-    "chibi, no glossy pupils. Faces simple, kind, imperfect. "
-    "World > close-ups: characters often small in a vast layered "
-    "scene of objects, creatures, plants, wonders. From behind, "
-    "above, or in profile. Vary framing, scale, POV. No border. "
-    "Forbidden: photoreal, 3D, anime, dark fantasy art, leather/"
-    "metal/wood textures, movie-poster mood, Disney gloss."
+    "Miyazaki-level surreal storybook world — gentle illogic (giant "
+    "vegetables, tiny doors in trees, too-big moons, lavender "
+    "mountains). RICH BUSY scene, every corner full of curious "
+    "objects, creatures, plants — a world a child wants to study. "
+    "Three depths: foreground detail, middle action, atmospheric "
+    "distance. One warm directed light (lamp, candle, moon, window, "
+    "sunset, fireflies). Characters often small in a vast layered "
+    "scene. Vary framing, scale, POV. No border. Never glossy, never "
+    "Netflix-kids, never airbrushed, never chibi."
 )
 
 # 🥇 OPENING — первая иллюстрация книги.

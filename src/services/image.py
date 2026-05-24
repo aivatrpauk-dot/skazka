@@ -27,6 +27,7 @@ from ..prompts import (
     FALLBACK_SCENE_TEMPLATE,
     THEME_TO_EN,
     random_image_style,
+    stage_style,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,28 +47,66 @@ async def generate_cover(
     theme_key: str,
     *,
     scene_description: str | None = None,
+    stage: str | None = None,
 ) -> Path | None:
-    """Генерирует обложку в стиле «детский рисунок с волшебством».
+    """Генерирует иллюстрацию для PDF-книжки.
 
-    Если передан scene_description (одно предложение по-английски из конкретной сказки) —
-    картинка будет про этот момент. Иначе используется fallback с heroем и темой."""
+    scene_description — одно предложение по-английски из конкретной сцены сказки.
+    stage — 'opening' | 'climax' | 'ending' для выбора stage-специфичного стиля.
+            Если None — случайный стиль (legacy/одиночный вызов).
+    """
     theme_en = THEME_TO_EN.get(theme_key, "kindness and warmth")
     if not scene_description:
         scene_description = FALLBACK_SCENE_TEMPLATE.format(hero=hero, theme_en=theme_en)
 
-    # Случайно выбираем одну из 3 микро-вариаций единого стиля
-    # «детский сюрреализм» (classic / dreamy / wild). Это узнаваемая ДНК
-    # нашего продукта — родители видят рисунок и сразу понимают «это наш стиль».
-    style_id, style_prompt = random_image_style()
-    prompt = f"{style_prompt} Scene to depict: {scene_description}"
+    # Stage-specific стиль (opening/climax/ending) или случайный для legacy.
+    if stage:
+        style_id, style_prompt = stage_style(stage)
+    else:
+        style_id, style_prompt = random_image_style()
+
+    # Жёстко запрещаем любой текст на картинке. Recraft v3 особенно склонен
+    # дорисовывать заголовки/имена/«The End» (он натренирован на book covers).
+    # Опытным путём: запрет работает лучше в САМОМ НАЧАЛЕ промпта (модель
+    # сильнее весит первые слова), а не в конце. Плюс negative prompt для
+    # Flux-моделей (см. _generate_fal).
+    no_text_prefix = (
+        "ABSOLUTELY NO TEXT, no letters, no words, no titles, no signatures, "
+        "no watermarks anywhere. Pure wordless illustration. "
+    )
+    # Короткий дублирующий тег в самом конце — модели attend сильнее к началу
+    # и концу строки. Короткий, чтобы не вытеснить scene description при
+    # обрезке до 950 chars (логика truncation ниже сохраняет первые 55% и
+    # последние 40%). Recraft v3 натренирован на book covers и любит
+    # дорисовывать названия — повтор в двух местах помогает заметно.
+    no_text_suffix = " // wordless image, no text, no letters."
+    prompt = (
+        f"{no_text_prefix}{style_prompt} Scene to depict: "
+        f"{scene_description}{no_text_suffix}"
+    )
     logger.info("Image style chosen: %s", style_id)
 
     out = _cache_path(prompt)
     if out.exists():
         return out
 
-    # Приоритет: FAL (новая логика, выбор модели через IMAGE_MODEL) →
-    # FusionBrain (legacy fallback) → ничего.
+    # Маршрутизация генерации, в порядке приоритета:
+    # 1. Recraft Direct API — если задан RECRAFT_API_KEY и модель recraft-v3.
+    #    Это наш основной путь: прямой вызов api.recraft.ai, полная поддержка
+    #    custom style_id, без FAL-обёртки.
+    # 2. FAL — для других моделей (Flux Pro/Dev/Schnell), либо если Recraft
+    #    key не задан и модель recraft-v3.
+    # 3. FusionBrain — самый последний legacy fallback.
+    use_recraft_direct = (
+        config.recraft_api_key
+        and (config.image_model or "").strip().lower() == "recraft-v3"
+    )
+    if use_recraft_direct:
+        result = await _generate_recraft_direct(prompt, out)
+        if result:
+            return result
+        logger.warning("Recraft direct не отдал картинку — пробую FAL fallback")
+
     if config.fal_api_key:
         result = await _generate_fal(prompt, out)
         if result:
@@ -77,8 +116,56 @@ async def generate_cover(
     if config.fusionbrain_api_key and config.fusionbrain_secret_key:
         return await _generate_fusionbrain(prompt, out)
 
-    logger.warning("Ни FAL_KEY, ни FUSIONBRAIN_* не заданы — картинка пропущена")
+    logger.warning("Ни RECRAFT_API_KEY, ни FAL_KEY, ни FUSIONBRAIN_* не заданы — картинка пропущена")
     return None
+
+
+async def generate_three_illustrations(
+    hero: str,
+    theme_key: str,
+    *,
+    scenes: dict[str, str] | None,
+) -> dict[str, Path | None]:
+    """Генерирует 3 иллюстрации для PDF-книжки: обложка, кульминация, финал.
+
+    Принимает scenes = {"opening": "...", "climax": "...", "ending": "..."}.
+    Каждая сцена идёт в свой generate_cover() параллельно.
+
+    Если scenes=None — fallback: для всех трёх используется один и тот же
+    placeholder из FALLBACK_SCENE_TEMPLATE (картинки будут похожи, но не сорвут
+    PDF полностью).
+
+    Возвращает dict {"opening": Path|None, "climax": Path|None, "ending": Path|None}.
+    Каждая может быть None если соответствующая генерация упала — PDF умеет
+    рендериться без любой из иллюстраций (просто пропустит страницу).
+    """
+    import asyncio
+    # Если сцен нет — используем один и тот же fallback для всех (хотя бы что-то).
+    if not scenes:
+        scenes = {"opening": None, "climax": None, "ending": None}
+
+    async def _one(scene_desc: str | None, stage: str) -> Path | None:
+        try:
+            return await generate_cover(
+                hero, theme_key,
+                scene_description=scene_desc,
+                stage=stage,
+            )
+        except Exception as e:
+            logger.warning("Иллюстрация %s упала: %s", stage, e)
+            return None
+
+    results = await asyncio.gather(
+        _one(scenes.get("opening"), "opening"),
+        _one(scenes.get("climax"), "climax"),
+        _one(scenes.get("ending"), "ending"),
+        return_exceptions=False,
+    )
+    return {
+        "opening": results[0],
+        "climax": results[1],
+        "ending": results[2],
+    }
 
 
 # ─────────────────── Маппинг IMAGE_MODEL → FAL endpoint и payload ───────────────────
@@ -103,8 +190,20 @@ def _fal_endpoint_for_model(model: str) -> tuple[str, dict]:
 
     if m == "recraft-v3":
         # https://fal.ai/models/fal-ai/recraft-v3
-        # style: children_book_illustration / digital_illustration / realistic_image
-        # Для нашей задачи (детская сказка перед сном) идеально children_book.
+        # Стратегия выбора стиля:
+        # 1. Если задан RECRAFT_STYLE_ID в .env — используем наш натрениро-
+        #    ванный приватный стиль (создан scripts/create_recraft_style.py
+        #    на 5 эталонных картинках из style_references/). Это даёт точно
+        #    тот визуальный язык, что мы выбрали, без борьбы с промптом.
+        # 2. Если RECRAFT_STYLE_ID не задан — фолбэк на встроенный preset
+        #    digital_illustration/hand_drawn (английская детская книжка —
+        #    Квентин Блейк / Gruffalo). Минус preset'а: иногда дорисовывает
+        #    «заголовок» сверху (Recraft натренирован на book covers).
+        #    Митигируется двойным anti-text guard (no_text_prefix+suffix).
+        if config.recraft_style_id:
+            return "fal-ai/recraft-v3", {
+                "style_id": config.recraft_style_id,
+            }
         return "fal-ai/recraft-v3", {
             "style": "digital_illustration/hand_drawn",
         }
@@ -202,6 +301,70 @@ async def _generate_fusionbrain(prompt: str, out: Path) -> Path | None:
         return None
 
 
+# ─────────────────── Recraft Direct API ───────────────────
+# Прямой вызов api.recraft.ai (без FAL-обёртки). Используется как основной
+# путь для recraft-v3, если задан RECRAFT_API_KEY в .env. Поддерживает наш
+# натренированный custom style_id, чего FAL может не уметь правильно
+# пробрасывать. FAL остаётся как fallback для Flux-моделей.
+
+RECRAFT_GENERATIONS_URL = "https://external.api.recraft.ai/v1/images/generations"
+
+
+async def _generate_recraft_direct(prompt: str, out: Path) -> Path | None:
+    """Прямая генерация через api.recraft.ai (минуя FAL-обёртку).
+
+    Если задан config.recraft_style_id — рисует в нашем натренированном
+    приватном стиле. Иначе — фолбэк на встроенный preset hand_drawn.
+    """
+    headers = {
+        "Authorization": f"Bearer {config.recraft_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload: dict[str, object] = {
+        "prompt": prompt,
+        "model": "recraftv3",
+        "size": "1024x1024",
+        "n": 1,
+        "response_format": "url",
+    }
+    # Стиль: либо наш натренированный (приоритет), либо встроенный preset.
+    if config.recraft_style_id:
+        payload["style_id"] = config.recraft_style_id
+    else:
+        payload["style"] = "digital_illustration/hand_drawn"
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(RECRAFT_GENERATIONS_URL, headers=headers, json=payload)
+            if resp.status_code != 200:
+                logger.error(
+                    "Recraft direct error %s: %s",
+                    resp.status_code, resp.text[:500],
+                )
+                return None
+            data = resp.json()
+            images = data.get("data") or []
+            if not images:
+                logger.error("Recraft direct: пустой data в ответе: %s", str(data)[:200])
+                return None
+            img_url = images[0].get("url")
+            if not img_url:
+                logger.error("Recraft direct: нет url в data[0]: %s", str(images[0])[:200])
+                return None
+            # Качаем картинку отдельным запросом
+            img_bytes = (await client.get(img_url, timeout=30)).content
+            out.write_bytes(img_bytes)
+            logger.info(
+                "Recraft direct: сгенерил %d KB (style_id=%s)",
+                len(img_bytes) // 1024,
+                "custom" if config.recraft_style_id else "preset hand_drawn",
+            )
+            return out
+    except Exception as e:
+        logger.exception("Recraft direct упал: %s", e)
+        return None
+
+
 # ─────────────────── FAL.AI (Flux Schnell) ───────────────────
 
 async def _generate_fal(prompt: str, out: Path) -> Path | None:
@@ -214,10 +377,24 @@ async def _generate_fal(prompt: str, out: Path) -> Path | None:
     url = f"https://fal.run/{endpoint}"
     headers = {"Authorization": f"Key {config.fal_api_key}", "content-type": "application/json"}
 
+    # Recraft v3 имеет ЖЁСТКИЙ лимит 1000 символов на prompt — обрезаем с запасом.
+    # Flux-семейство принимает до ~2000-4000, там обрезка не нужна.
+    # Урезаем умно: сохраняем начало (стиль) + конец (сцену + запрет текста).
+    max_prompt_chars = 950 if endpoint == "fal-ai/recraft-v3" else 4000
+    safe_prompt = prompt
+    if len(prompt) > max_prompt_chars:
+        # Берём первые 60% (стиль) и последние 40% (сцена + no_text),
+        # склеиваем через "...". Сцена критичнее стиля — её нельзя терять.
+        head_len = int(max_prompt_chars * 0.55)
+        tail_len = max_prompt_chars - head_len - 5
+        safe_prompt = prompt[:head_len] + " ... " + prompt[-tail_len:]
+        logger.info("Prompt обрезан с %d до %d символов для %s",
+                    len(prompt), len(safe_prompt), endpoint)
+
     # Recraft v3 принимает image_size по-другому (использует строки или {w,h}).
     # Для квадратной обложки 1024x1024 — square_hd подходит для всех моделей.
     base_payload = {
-        "prompt": prompt,
+        "prompt": safe_prompt,
         "image_size": "square_hd",
         "num_images": 1,
     }
@@ -227,6 +404,16 @@ async def _generate_fal(prompt: str, out: Path) -> Path | None:
     # Recraft и FluxPro 1.1 параметра не имеют — туда не передаём.
     if endpoint.startswith("fal-ai/flux/"):
         base_payload["enable_safety_checker"] = False
+
+    # Запрет текста на картинке через negative prompt — поддерживается Flux Pro/Dev
+    # (полный набор параметров) и Recraft v3 (через style attributes). Schnell
+    # негатив-промпт игнорирует, но мы и так в основном промпте запретили.
+    negative = (
+        "text, letters, words, captions, titles, signatures, logos, watermarks, "
+        "subtitles, written language, alphabet, characters, typography"
+    )
+    if endpoint in ("fal-ai/flux-pro/v1.1", "fal-ai/flux/dev"):
+        base_payload["negative_prompt"] = negative
 
     async with httpx.AsyncClient(timeout=120) as client:
         for attempt in range(2):
