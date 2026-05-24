@@ -836,3 +836,140 @@ async def cmd_feedback(message: Message, command: CommandObject) -> None:
             size += len(block)
     if buf:
         await message.answer("".join(buf))
+
+
+# ============================================================================
+# /give_stories <telegram_id> <N>  — выдать бонусные сказки юзеру
+# ============================================================================
+
+@router.message(Command("give_stories"))
+async def cmd_give_stories(message: Message, command: CommandObject) -> None:
+    """Выдать юзеру N бонусных сказок (без оплаты, без daily-лимита).
+
+    Использование:
+      /give_stories 1234567890 5    — выдать 5 бонусных сказок юзеру с этим tg_id
+      /give_stories 1234567890      — выдать 1 бонусную сказку (по умолчанию)
+
+    Бонусные сказки списываются ПЕРВЫМИ при следующих генерациях. У них нет
+    daily-лимита 1/сутки — юзер может сделать несколько подряд, пока бонусы
+    не кончатся.
+    """
+    if not _is_admin(message.from_user.id):
+        return
+
+    args = (command.args or "").split()
+    if not args or not args[0].isdigit():
+        await message.answer(
+            "Использование: <code>/give_stories TG_ID [N]</code>\n\n"
+            "Пример: <code>/give_stories 1275991975 5</code>\n"
+            "Если N не указано — выдаётся 1 сказка."
+        )
+        return
+
+    target_tg_id = int(args[0])
+    count = 1
+    if len(args) > 1 and args[1].isdigit():
+        count = max(1, min(100, int(args[1])))  # лимит 1..100, чтоб не вкатать миллион
+
+    async with Session() as s:
+        user = (await s.execute(
+            select(User).where(User.telegram_id == target_tg_id)
+        )).scalar_one_or_none()
+        if not user:
+            await message.answer(
+                f"Юзер с tg_id <code>{target_tg_id}</code> не найден в БД. "
+                f"Он должен сначала хотя бы раз нажать /start у бота."
+            )
+            return
+        before = user.bonus_stories or 0
+        user.bonus_stories = before + count
+        username = f"@{user.username}" if user.username else "(без юзернейма)"
+        child = user.child_name or "?"
+        await s.commit()
+
+    await message.answer(
+        f"✅ Выдал <b>{count}</b> бонусных сказок\n"
+        f"Юзер: {username} · tg:<code>{target_tg_id}</code>\n"
+        f"Ребёнок: {child}\n"
+        f"Было: {before} → стало: {before + count}"
+    )
+
+
+# ============================================================================
+# /reset_user <telegram_id>  — сбросить ротацию и daily-лимит юзера
+# ============================================================================
+
+@router.message(Command("reset_user"))
+async def cmd_reset_user(message: Message, command: CommandObject) -> None:
+    """Сбросить юзера: daily-лимит, ротацию архитектур, last_story_*.
+    Использовать когда нужно дать юзеру возможность сгенерить сегодня снова
+    (например, прошлая сказка не понравилась и хочется попробовать ещё раз).
+
+    Что СБРАСЫВАЕТСЯ:
+      - last_story_at  → юзер может сгенерить сегодня снова (daily-лимит сброшен)
+      - last_story_group / architecture / humor_register / category → ротация
+        стартует с чистого листа (модель свободно выбирает архитектуру и жанр)
+
+    Что НЕ трогаем:
+      - bonus_stories / free_stories_used / pack_stories_remaining /
+        single_stories_remaining / subscription_status — счётчики и оплаты целы
+      - child_name / child_age — данные ребёнка не теряются
+      - Все прошлые сказки в /library остаются на месте
+
+    Использование:
+      /reset_user 1234567890
+    """
+    if not _is_admin(message.from_user.id):
+        return
+
+    args = (command.args or "").strip()
+    if not args.isdigit():
+        await message.answer(
+            "Использование: <code>/reset_user TG_ID</code>\n\n"
+            "Пример: <code>/reset_user 1275991975</code>\n\n"
+            "Сбрасывает daily-лимит и ротацию архитектур у юзера. Юзер сможет "
+            "сегодня сгенерить ещё одну сказку, и она пойдёт «с нуля» по выбору "
+            "жанра и архитектуры."
+        )
+        return
+
+    target_tg_id = int(args)
+
+    async with Session() as s:
+        user = (await s.execute(
+            select(User).where(User.telegram_id == target_tg_id)
+        )).scalar_one_or_none()
+        if not user:
+            await message.answer(
+                f"Юзер с tg_id <code>{target_tg_id}</code> не найден в БД."
+            )
+            return
+
+        was = (
+            f"last_story_at={user.last_story_at}, "
+            f"category={user.last_story_category}, "
+            f"group={user.last_story_group}, "
+            f"arch={user.last_story_architecture}, "
+            f"humor={user.last_story_humor_register}"
+        )
+
+        user.last_story_at = None
+        user.last_story_category = None
+        user.last_story_group = None
+        user.last_story_architecture = None
+        user.last_story_humor_register = None
+
+        username = f"@{user.username}" if user.username else "(без юзернейма)"
+        child = user.child_name or "?"
+        await s.commit()
+
+    logger.info("Admin reset user tg=%s: %s", target_tg_id, was)
+
+    await message.answer(
+        f"✅ Сбросил юзера\n"
+        f"Юзер: {username} · tg:<code>{target_tg_id}</code>\n"
+        f"Ребёнок: {child}\n\n"
+        f"Сброшено: daily-лимит, last_story_category, group, architecture, humor.\n"
+        f"Юзер может сгенерить сегодня ещё раз, ротация — с чистого листа.\n\n"
+        f"Счётчики (bonus/pack/subscription) и /library — целы."
+    )
