@@ -33,6 +33,7 @@ from ..prompts import (
     SYSTEM_STORYTELLER_TODDLER,
     THEME_CHOICES,
     parse_story_marker,
+    parse_story_title,
     pick_storyteller_prompt,
 )
 
@@ -261,8 +262,10 @@ async def generate_story(
     previous_summary: str | None = None,
     last_story_group: str | None = None,
     last_story_architecture: int | None = None,
-) -> tuple[str, str | None, int | None]:
-    """Генерирует сказку. Возвращает (чистый текст, группа, архитектура).
+    last_story_humor_register: int | None = None,
+) -> tuple[str, str | None, int | None, int | None, str | None]:
+    """Генерирует сказку. Возвращает кортеж:
+    (чистый текст, группа, архитектура, регистр юмора, название).
 
     Сказочник сам выбирает группу и архитектуру из 25 шаблонов. Чтобы он
     не повторял группу два дня подряд — мы храним `last_story_group` в БД
@@ -290,12 +293,21 @@ async def generate_story(
     )
 
     # Подсказка о предыдущей архитектуре — пустая для первой сказки.
-    # Для kids-промпта используется last_story_group + архитектура,
-    # для toddler — только архитектура (групп нет, только номер 1..8).
-    if last_story_architecture:
+    # Если есть И архитектура, И регистр — используем полный template
+    # (упоминает обе оси, требует «другую группу И другой регистр»).
+    # Если есть только архитектура (legacy с v1 до перехода на v2) —
+    # короткий fallback без упоминания регистра, чтобы не врать про №None.
+    if last_story_architecture and last_story_humor_register:
         rotation_hint = rotation_hint_template.format(
             last_group=last_story_group or "",
             last_architecture=last_story_architecture,
+            last_humor_register=last_story_humor_register,
+        )
+    elif last_story_architecture:
+        # Legacy fallback — только архитектура известна, регистр выбирай свободно.
+        rotation_hint = (
+            f"Предыдущая сказка была по архитектуре №{last_story_architecture}. "
+            "Сегодня — выбери другую архитектуру и любой регистр юмора."
         )
     else:
         rotation_hint = ""
@@ -348,16 +360,28 @@ async def generate_story(
     if not text:
         raise RuntimeError("LLM вернул пустой ответ")
 
-    # Парсим маркер первой строки и сразу её обрезаем.
-    cleaned, group, architecture = parse_story_marker(text)
-    if group is None:
+    # Парсим маркер первой строки и сразу её обрезаем. Маркер теперь
+    # содержит до 3 параметров: группу, архитектуру и регистр юмора (v2).
+    # Старый формат без регистра тоже поддерживается (register=None).
+    cleaned, group, architecture, humor_register = parse_story_marker(text)
+    if group is None and architecture is None:
         logger.warning(
             "LLM не вернул маркер группы/архитектуры. Ротация не сработает на следующей сказке."
         )
     else:
-        logger.info("Сказка: группа %s, архитектура %d", group, architecture)
+        logger.info(
+            "Сказка: группа %s, архитектура %s, регистр юмора %s",
+            group, architecture, humor_register,
+        )
 
-    return _clean_story_text(cleaned), group, architecture
+    # Парсим название во второй строке (в «ёлочках») и тоже обрезаем.
+    cleaned, title = parse_story_title(cleaned)
+    if title:
+        logger.info("Название сказки: %s", title)
+    else:
+        logger.warning("LLM не вернул название сказки в «ёлочках». Используется fallback.")
+
+    return _clean_story_text(cleaned), group, architecture, humor_register, title
 
 
 async def generate_gift_story(
