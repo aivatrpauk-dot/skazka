@@ -110,6 +110,9 @@ SOURCE_FREE = "free"
 SOURCE_SINGLE = "single"
 SOURCE_PACK = "pack"
 SOURCE_SUBSCRIPTION = "subscription"
+# Спец-источник для админов: обходит daily-лимит и paywall, ничего не
+# списывает. Нужен чтобы свободно тестировать прод без админских очисток.
+SOURCE_ADMIN = "admin"
 
 
 def _allowed_source(u: User) -> str | None:
@@ -117,12 +120,16 @@ def _allowed_source(u: User) -> str | None:
     None — значит нельзя (нужен paywall).
 
     Логика:
+      0. Админ (telegram_id в config.admin_ids) — всегда SOURCE_ADMIN,
+         без лимитов и счётчиков.
       1. Бонусные сказки (от рефералки/feedback) — без daily-лимита.
       2. Free trial первая сказка — без daily-лимита.
       3. Single-разовая покупка — без daily-лимита (платил же).
       4. Pack — с daily-лимитом 1/сутки.
       5. Subscription active — с daily-лимитом 1/сутки.
     """
+    if u.telegram_id in config.admin_ids:
+        return SOURCE_ADMIN
     if u.bonus_stories and u.bonus_stories > 0:
         return SOURCE_BONUS
     if (u.free_stories_used or 0) < config.free_story_limit:
@@ -149,8 +156,13 @@ def _consume_story_source(u: User, source: str) -> None:
     после успешной генерации, перед commit().
 
     Также проставляет last_story_at для источников с daily-лимитом.
+    Для SOURCE_ADMIN — ничего не списывается и last_story_at не ставится
+    (админ может тестировать неограниченно).
     """
     now = dt.datetime.now(dt.timezone.utc)
+    if source == SOURCE_ADMIN:
+        # Админский обход — ничего не трогаем.
+        return
     if source == SOURCE_BONUS:
         u.bonus_stories = max(0, (u.bonus_stories or 0) - 1)
     elif source == SOURCE_FREE:
@@ -205,17 +217,16 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
         return
 
     if u.child_name:
-        # уже знаем ребёнка — но возраст спрашиваем заново каждый раз:
-        # у родителя может быть несколько детей разных возрастов, а возраст
-        # определяет, какой промпт получит сказочник (toddler / kids).
+        # уже знаем ребёнка — но «версию» (возраст) спрашиваем заново каждый
+        # раз: у родителя может быть несколько детей, и версия определяет,
+        # какой промпт получит сказочник (toddler / kids).
         await state.update_data(child_name=u.child_name)
         name_gen = genitive(u.child_name)        # для Лизы (родительный)
-        name_dat = dative(u.child_name)          # Лизе (дательный — для «сколько лет КОМУ»)
         await call.message.edit_text(
             f"Сегодня сказка для <b>{name_gen}</b>.\n"
             f"<i>Если на этот вечер у Вас другой ребёнок — нажмите «Назад» "
             f"и впишите имя.</i>\n\n"
-            f"Сколько лет {name_dat}?",
+            "Выбирайте версию, которая больше нравится ребёнку.",
             reply_markup=age_kb(),
         )
         await state.set_state(StoryWizard.waiting_child_age)
@@ -223,8 +234,7 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
         return
 
     await call.message.edit_text(
-        "🕯 Как зовут малыша, для которого мы сочиним сегодняшнюю сказку?\n"
-        "<i>Напишите имя — например, Маша, Тимофей или Лиза.</i>",
+        "🕯 Как зовут ребёнка? Напишите имя.",
     )
     await state.set_state(StoryWizard.waiting_child_name)
     await call.answer()
@@ -241,12 +251,11 @@ async def m_child_name(message: Message, state: FSMContext) -> None:
         return
     name = normalize_name(raw)  # ЛИза → Лиза, анна-мария → Анна-Мария
     await state.update_data(child_name=name)
-    # Спрашиваем возраст — он определяет промпт (toddler для 3-4, основной
-    # для 5-6 с 25 архитектурами). Без явного выбора пользователя промпт
-    # не подобрать.
-    # Падеж: «сколько лет КОМУ?» — дательный, а не родительный.
+    # Возраст спрашиваем как «версию» сказки — кнопками 3-4 / 5-6. От него
+    # зависит, какой промпт получит сказочник (toddler — проще и нежнее,
+    # kids — глубже и с миядзаковским сюром).
     await message.answer(
-        f"Сколько лет {dative(name)}?",
+        "Выбирайте версию, которая больше нравится ребёнку.",
         reply_markup=age_kb(),
     )
     await state.set_state(StoryWizard.waiting_child_age)
@@ -353,11 +362,12 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         await call.answer(msg or "Слишком быстро", show_alert=True)
         return
 
-    # ───── Лимит 1 сказка в КАЛЕНДАРНЫЙ ДЕНЬ (по Москве, для ВСЕХ) ─────
-    # Сбрасывается в полночь по МСК — не зависит от времени предыдущего заказа.
-    # Так мама может заказать днём (тихий час) или вечером — гибко.
+    # ───── Лимит 1 сказка в КАЛЕНДАРНЫЙ ДЕНЬ (по Москве) ─────
+    # Сбрасывается в полночь по МСК. Админы (config.admin_ids) обходят
+    # этот лимит — нужно для свободного тестирования прода без чисток.
     u_pre = await _get_user(call.from_user.id)
-    if u_pre.last_story_at:
+    is_admin = u_pre.telegram_id in config.admin_ids
+    if u_pre.last_story_at and not is_admin:
         import datetime as _dt
         MSK_TZ = _dt.timezone(_dt.timedelta(hours=3))
         now_msk_date = _dt.datetime.now(_dt.timezone.utc).astimezone(MSK_TZ).date()
@@ -380,8 +390,8 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     await state.clear()
 
     await call.message.edit_text(
-        "🕯 Зажигаю свечи в библиотеке. Сейчас наша сегодняшняя сказка "
-        "соберётся — пара минут, и я принесу её Вам."
+        "🕯 Зажигаю свечи в библиотеке. Пара минут, и я принесу Вам "
+        "сегодняшнюю сказку."
     )
     await call.answer()
 
@@ -399,19 +409,30 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # В премиум-стеке всегда полное качество (Azure + Sonnet + Recraft).
     full_quality = True
 
-    # ─ Ротация архитектур: подкладываем модели подсказку, какая группа была ─
-    # в прошлый раз, чтобы сегодня выбрала другую. Если у юзера ещё не было
-    # сказок — last_story_group будет None, и сказочник выбирает свободно.
+    # ─ Альтернация жанров + ротация архитектур и регистров.
+    # last_story_category управляет ЧЕРЕДОВАНИЕМ двух жанров для 5-6 лет:
+    # MP (Маленький принц, литературный) ↔ SW (простое волшебство).
+    # last_story_group/architecture/humor_register управляют ротацией ВНУТРИ
+    # категории (чтобы не повторять архитектуру и регистр).
     last_group = u.last_story_group
     last_arch = u.last_story_architecture
-    if last_group:
+    last_humor = u.last_story_humor_register
+    last_category = u.last_story_category
+    if last_category or last_arch:
         logger.info(
-            "Ротация: предыдущая сказка для user=%s — группа %s, архитектура %s",
-            u.telegram_id, last_group, last_arch,
+            "Ротация: предыдущая для user=%s — категория %s, группа %s, архитектура %s, регистр %s",
+            u.telegram_id, last_category, last_group, last_arch, last_humor,
         )
 
     try:
-        text, story_group, story_architecture = await generate_story(
+        (
+            text,
+            story_group,
+            story_architecture,
+            story_humor_register,
+            story_title,
+            story_category,
+        ) = await generate_story(
             child_name=data["child_name"],
             child_age=int(data.get("child_age") or 5),
             hero=data["hero"],
@@ -420,6 +441,8 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
             paid_quality=full_quality,
             last_story_group=last_group,
             last_story_architecture=last_arch,
+            last_story_humor_register=last_humor,
+            last_story_category=last_category,
         )
     except Exception as e:
         logger.exception("Ошибка генерации сказки: %s", e)
@@ -429,18 +452,20 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         )
         return
 
-    # Сохраняем выбранную сегодня группу/архитектуру в БД юзера — для ротации
-    # на следующий день. Делаем СРАЗУ после успешной генерации, до длинной
-    # пайплайн обработки PDF/картинок (если что-то ниже упадёт — рот всё равно
-    # сдвинется, и завтра модель не повторит ту же группу).
-    if story_group:
+    # Сохраняем выбранные сегодня параметры в БД юзера — для альтернации
+    # жанров (MP↔SW) и ротации архитектур на следующий раз. Делаем СРАЗУ
+    # после успешной генерации, до длинного пайплайна PDF/картинок (если
+    # что-то ниже упадёт — ротация всё равно сдвинется).
+    if story_category or story_architecture:
         async with Session() as s:
             await s.execute(
                 update(User)
                 .where(User.id == u.id)
                 .values(
+                    last_story_category=story_category,
                     last_story_group=story_group,
                     last_story_architecture=story_architecture,
+                    last_story_humor_register=story_humor_register,
                 )
             )
             await s.commit()
@@ -470,16 +495,13 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         title_phrase = THEME_CHOICES[data["theme_key"]][2] if data.get("theme_key") else ""
     except (KeyError, IndexError):
         title_phrase = ""
-    hero_value = data.get("hero") or ""
-    if hero_value:
-        # «Сказка ПРО кого?» — винительный («про Машу и Зайчика»).
-        child_acc = _acc(data["child_name"])
-        hero_acc = _hero_acc(hero_value)
-        book_title = f"Сказка про {child_acc} и {hero_acc}"
+    # Заголовок книжки. Приоритет: название, которое сказочник придумал сам
+    # (приходит из generate_story, парсится из второй строки в «ёлочках»).
+    # Если сказочник название не дал — fallback на общий «Сказка для X».
+    if story_title:
+        book_title = story_title
     else:
-        # Сказочник сам выбрал героя — мы его имени не знаем, общий заголовок.
-        # «Сказка ДЛЯ кого?» — родительный («для Маши»), НЕ винительный.
-        book_title = f"Ночная сказка для {_gen(data['child_name'])}"
+        book_title = f"Сказка для {_gen(data['child_name'])}"
     book_subtitle = title_phrase
 
     if not config.use_tts:
@@ -536,11 +558,7 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
                 safe_name = f"{data['child_name']} & {data['hero']}.pdf".replace("/", "-")
                 await call.message.answer_document(
                     FSInputFile(str(pdf_path), filename=safe_name),
-                    caption=(
-                        f"📖 <b>{book_title}</b>\n\n"
-                        "Открывайте книжечку и читайте малышу вслух — "
-                        "это и есть тёплый ритуал перед сном."
-                    ),
+                    caption=f"📖 Сказка на сегодня для {_gen(data['child_name'])}",
                 )
             except Exception as e:
                 logger.exception("PDF send failed: %s", e)

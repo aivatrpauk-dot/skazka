@@ -30,6 +30,7 @@ from ..prompts import (
     SERIES_CONTEXT_TEMPLATE,
     SYSTEM_GIFT_STORYTELLER,
     SYSTEM_STORYTELLER,
+    SYSTEM_STORYTELLER_SIMPLE_WONDER,
     SYSTEM_STORYTELLER_TODDLER,
     THEME_CHOICES,
     parse_story_marker,
@@ -263,9 +264,10 @@ async def generate_story(
     last_story_group: str | None = None,
     last_story_architecture: int | None = None,
     last_story_humor_register: int | None = None,
-) -> tuple[str, str | None, int | None, int | None, str | None]:
+    last_story_category: str | None = None,
+) -> tuple[str, str | None, int | None, int | None, str | None, str | None]:
     """Генерирует сказку. Возвращает кортеж:
-    (чистый текст, группа, архитектура, регистр юмора, название).
+    (чистый текст, группа, архитектура, регистр юмора, название, категория).
 
     Сказочник сам выбирает группу и архитектуру из 25 шаблонов. Чтобы он
     не повторял группу два дня подряд — мы храним `last_story_group` в БД
@@ -283,33 +285,46 @@ async def generate_story(
     """
     _ = hero, theme_key, length, previous_summary  # legacy, не используется
 
-    # Выбираем промпт по возрасту: 3-4 → toddler (8 архитектур, проще, добрее),
-    # 5-6 → основной (25 архитектур, сложнее, глубже). Граница на 5 годах.
-    storyteller_prompt, rotation_hint_template = pick_storyteller_prompt(child_age)
+    # Выбираем промпт по возрасту + чередуем жанры (MP↔SW) для 5-6:
+    # 3-4 → toddler (8 архитектур, проще, добрее).
+    # 5-6 → ЧЕРЕДУЕМ: «Маленький принц» (MP) и «простое волшебство» (SW)
+    #       выбирается на основе last_story_category. Логика в
+    #       pick_storyteller_prompt(): если прошлая была MP → сейчас SW,
+    #       и наоборот.
+    storyteller_prompt, rotation_hint_template, this_category = pick_storyteller_prompt(
+        child_age, last_story_category,
+    )
+    prompt_label = {
+        SYSTEM_STORYTELLER_TODDLER: "toddler",
+        SYSTEM_STORYTELLER: "MP (Маленький принц)",
+        SYSTEM_STORYTELLER_SIMPLE_WONDER: "SW (простое волшебство)",
+    }.get(storyteller_prompt, "unknown")
     logger.info(
-        "Выбран промпт: %s для возраста %d",
-        "toddler" if storyteller_prompt is SYSTEM_STORYTELLER_TODDLER else "kids",
-        child_age,
+        "Выбран промпт: %s для возраста %d (предыдущая категория: %s)",
+        prompt_label, child_age, last_story_category or "—",
     )
 
-    # Подсказка о предыдущей архитектуре — пустая для первой сказки.
-    # Если есть И архитектура, И регистр — используем полный template
-    # (упоминает обе оси, требует «другую группу И другой регистр»).
-    # Если есть только архитектура (legacy с v1 до перехода на v2) —
-    # короткий fallback без упоминания регистра, чтобы не врать про №None.
-    if last_story_architecture and last_story_humor_register:
+    # Rotation hint работает ТОЛЬКО внутри одной категории. Если категория
+    # сменилась (альтернация MP↔SW) — нумерация архитектур в новой
+    # категории другая, старая подсказка бессмысленна, передаём пустую.
+    category_unchanged = (
+        last_story_category == this_category
+        or (this_category == "TODDLER" and last_story_category in (None, "TODDLER"))
+    )
+    if category_unchanged and last_story_architecture and last_story_humor_register:
         rotation_hint = rotation_hint_template.format(
             last_group=last_story_group or "",
             last_architecture=last_story_architecture,
             last_humor_register=last_story_humor_register,
         )
-    elif last_story_architecture:
-        # Legacy fallback — только архитектура известна, регистр выбирай свободно.
+    elif category_unchanged and last_story_architecture:
+        # Legacy fallback — только архитектура известна, регистр свободен.
         rotation_hint = (
             f"Предыдущая сказка была по архитектуре №{last_story_architecture}. "
             "Сегодня — выбери другую архитектуру и любой регистр юмора."
         )
     else:
+        # Первая сказка ИЛИ смена категории — подсказку не передаём.
         rotation_hint = ""
 
     format_params = {
@@ -360,18 +375,18 @@ async def generate_story(
     if not text:
         raise RuntimeError("LLM вернул пустой ответ")
 
-    # Парсим маркер первой строки и сразу её обрезаем. Маркер теперь
-    # содержит до 3 параметров: группу, архитектуру и регистр юмора (v2).
-    # Старый формат без регистра тоже поддерживается (register=None).
-    cleaned, group, architecture, humor_register = parse_story_marker(text)
-    if group is None and architecture is None:
+    # Парсим маркер первой строки. Возвращает 5 значений:
+    # (cleaned, group, architecture, humor_register, category).
+    # category — "MP" / "SW" / "TODDLER" / None.
+    cleaned, group, architecture, humor_register, category = parse_story_marker(text)
+    if category is None:
         logger.warning(
-            "LLM не вернул маркер группы/архитектуры. Ротация не сработает на следующей сказке."
+            "LLM не вернул маркер категории/архитектуры. Альтернация не сработает на следующей сказке."
         )
     else:
         logger.info(
-            "Сказка: группа %s, архитектура %s, регистр юмора %s",
-            group, architecture, humor_register,
+            "Сказка: категория %s, группа %s, архитектура %s, регистр юмора %s",
+            category, group, architecture, humor_register,
         )
 
     # Парсим название во второй строке (в «ёлочках») и тоже обрезаем.
@@ -381,7 +396,7 @@ async def generate_story(
     else:
         logger.warning("LLM не вернул название сказки в «ёлочках». Используется fallback.")
 
-    return _clean_story_text(cleaned), group, architecture, humor_register, title
+    return _clean_story_text(cleaned), group, architecture, humor_register, title, category
 
 
 async def generate_gift_story(

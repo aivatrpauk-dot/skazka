@@ -92,12 +92,19 @@ class User(Base):
     # одна история перед сном, не три. Защита от спама и формирование привычки.
     last_story_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # Ротация архитектур сказки. Сказочник пишет первой строкой
-    # «Группа В, архитектура 11 — перевёртыш»; парсер вытягивает буквы группы
-    # (А/Б/В/Г) и номер архитектуры (1..25), складывает сюда. На следующей
-    # сказке мы передаём это в промпт, чтобы модель не повторила группу.
+    # Ротация архитектур и регистров юмора сказки. Сказочник пишет первой
+    # строкой «Группа В, архитектура 14 — ...; регистр 1 — ...»; парсер
+    # вытягивает букву группы (А/Б/В/Г), номер архитектуры (1..25) и номер
+    # регистра юмора (1..9), складывает сюда. На следующей сказке мы
+    # передаём это в промпт, чтобы модель не повторила ни группу, ни регистр.
     last_story_group: Mapped[str | None] = mapped_column(String(1))
     last_story_architecture: Mapped[int | None] = mapped_column(Integer)
+    last_story_humor_register: Mapped[int | None] = mapped_column(Integer)
+    # Категория жанра прошлой сказки. Используется для чередования стилей
+    # у возраста 5-6: «MP» (Маленький принц, литературный сюр) <→ «SW»
+    # (Simple Wonder, классическое сказочное приключение). Для 3-4 всегда
+    # «TODDLER». NULL = ещё ни одной сказки не было.
+    last_story_category: Mapped[str | None] = mapped_column(String(8))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_active_at: Mapped[datetime] = mapped_column(

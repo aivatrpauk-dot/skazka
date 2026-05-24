@@ -52,10 +52,18 @@ INLINE_MIGRATIONS = [
     "ALTER TYPE payment_kind ADD VALUE IF NOT EXISTS 'monthly_renewal'",
     # ─── Ротация архитектур сказки (May 2026) ───
     # last_story_group хранит букву группы (А/Б/В/Г) предыдущей сказки,
-    # last_story_architecture — номер архитектуры (1..25). Парсятся из первой
-    # строки ответа модели и передаются обратно в промпт следующего вызова.
+    # last_story_architecture — номер архитектуры (1..25),
+    # last_story_humor_register — номер регистра юмора (1..9, добавлен v2).
+    # Парсятся из первой строки ответа модели и передаются обратно в промпт
+    # следующего вызова, чтобы модель не повторила ни группу, ни регистр.
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_group VARCHAR(1)',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_architecture INTEGER',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_humor_register INTEGER',
+    # ─── Альтернация жанров MP↔SW (May 2026) ───
+    # Категория жанра прошлой сказки: «MP» (Маленький принц, литературный)
+    # vs «SW» (Simple Wonder, классическое сказочное приключение). Для
+    # возраста 5-6 ротируется между ними; для 3-4 всегда «TODDLER».
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_category VARCHAR(8)',
     # ─── PDF в библиотеке (May 2026) ───
     # Раньше Story.image_path использовался как обложка + библиотека отдавала
     # текст+картинку+аудио. Теперь продукт чище: одна PDF-книжка. Колонка
