@@ -20,17 +20,18 @@ from ..services import (
     extract_scene,
     generate_cover,
     generate_story,
-    summarize_story,
     synthesize_speech,
+    # summarize_story больше не используется — он был для антологии-продолжения,
+    # которая теперь удалена (см. cb_story_continue).
 )
 from ..states import StoryWizard
 from ..utils import (
-    accusative,
     dative,
     genitive,
-    hero_accusative,
-    hero_instrumental,
-    instrumental,
+    # accusative, hero_accusative, hero_genitive, hero_instrumental, instrumental
+    # больше не используются на верхнем уровне — после удаления cb_story_continue
+    # и выбора героя в визарде. Локальный импорт _acc/_hero_acc в _run_generation
+    # остался для совместимости со старой веткой PDF-заголовка «Сказка про X и Y».
     normalize_name,
     strip_emo_markers,
 )
@@ -187,48 +188,9 @@ async def _get_user(telegram_id: int) -> User:
         return (await s.execute(select(User).where(User.telegram_id == telegram_id))).scalar_one()
 
 
-@router.callback_query(F.data == "story:continue")
-async def cb_story_continue(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
-    """Юзер жмёт «Что было дальше с {hero}?» — пропускаем мастер и сразу
-    генерируем продолжение с теми же параметрами (имя ребёнка, hero, theme)
-    из последней сказки. Длину НЕ спрашиваем — сразу генерируем."""
-    u = await _get_user(call.from_user.id)
-    if not _can_make_story(u):
-        await call.message.edit_text(
-            _paywall_reason_text(u),
-            reply_markup=paywall_kb(),
-        )
-        await call.answer()
-        return
-
-    async with Session() as s:
-        # Берём последнюю сказку этого юзера (любую — антология не требует тизера)
-        last = (await s.execute(
-            select(Story)
-            .where(Story.user_id == u.id)
-            .order_by(Story.created_at.desc())
-            .limit(1)
-        )).scalar_one_or_none()
-
-    if not last:
-        await call.answer("Нет прошлой сказки", show_alert=True)
-        return
-
-    # Запоминаем параметры в state и метку «это антология-продолжение»
-    await state.update_data(
-        child_name=last.child_name,
-        child_age=last.child_age,
-        hero=last.hero,
-        theme_key=last.theme,
-        continue_series=True,
-    )
-    await call.message.edit_text(
-        f"🕯 Новая глава из жизни <b>{accusative(last.child_name)}</b> и "
-        f"<b>{hero_accusative(last.hero)}</b>. Открываем чистую страницу…"
-    )
-    await call.answer()
-    # Без шага «выбора длины» — сразу запускаем генерацию
-    await _run_generation(call, state, bot)
+# cb_story_continue («Завтра — продолжение про того же героя») удалён:
+# концепция продолжения серии устарела, теперь каждая сказка независимая,
+# сказочник сам выбирает героя и архитектуру. См. main_menu_kb и after_story_kb.
 
 
 @router.callback_query(F.data == "story:new")
@@ -247,12 +209,13 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
         # у родителя может быть несколько детей разных возрастов, а возраст
         # определяет, какой промпт получит сказочник (toddler / kids).
         await state.update_data(child_name=u.child_name)
-        name_gen = genitive(u.child_name)        # для Лизы
+        name_gen = genitive(u.child_name)        # для Лизы (родительный)
+        name_dat = dative(u.child_name)          # Лизе (дательный — для «сколько лет КОМУ»)
         await call.message.edit_text(
             f"Сегодня сказка для <b>{name_gen}</b>.\n"
             f"<i>Если на этот вечер у Вас другой ребёнок — нажмите «Назад» "
             f"и впишите имя.</i>\n\n"
-            f"Сколько лет ребёнку?",
+            f"Сколько лет {name_dat}?",
             reply_markup=age_kb(),
         )
         await state.set_state(StoryWizard.waiting_child_age)
@@ -281,8 +244,9 @@ async def m_child_name(message: Message, state: FSMContext) -> None:
     # Спрашиваем возраст — он определяет промпт (toddler для 3-4, основной
     # для 5-6 с 25 архитектурами). Без явного выбора пользователя промпт
     # не подобрать.
+    # Падеж: «сколько лет КОМУ?» — дательный, а не родительный.
     await message.answer(
-        f"Сколько лет {genitive(name)}?",
+        f"Сколько лет {dative(name)}?",
         reply_markup=age_kb(),
     )
     await state.set_state(StoryWizard.waiting_child_age)
@@ -493,7 +457,7 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     from ..services.image import generate_three_illustrations
     from ..services.llm import extract_three_scenes
     from ..services.pdf_book import build_story_pdf
-    from ..utils import accusative as _acc, hero_accusative as _hero_acc
+    from ..utils import accusative as _acc, genitive as _gen, hero_accusative as _hero_acc
 
     audio_path: Path | None = None
     image_path: Path | None = None  # для совместимости с БД (Story.image_path)
@@ -507,14 +471,16 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         title_phrase = THEME_CHOICES[data["theme_key"]][2] if data.get("theme_key") else ""
     except (KeyError, IndexError):
         title_phrase = ""
-    child_acc = _acc(data["child_name"])
     hero_value = data.get("hero") or ""
     if hero_value:
+        # «Сказка ПРО кого?» — винительный («про Машу и Зайчика»).
+        child_acc = _acc(data["child_name"])
         hero_acc = _hero_acc(hero_value)
         book_title = f"Сказка про {child_acc} и {hero_acc}"
     else:
         # Сказочник сам выбрал героя — мы его имени не знаем, общий заголовок.
-        book_title = f"Ночная сказка для {child_acc}"
+        # «Сказка ДЛЯ кого?» — родительный («для Маши»), НЕ винительный.
+        book_title = f"Ночная сказка для {_gen(data['child_name'])}"
     book_subtitle = title_phrase
 
     if not config.use_tts:

@@ -3,25 +3,20 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..prompts import HERO_QUICK_PICKS, THEME_CHOICES
-from ..utils import accusative, hero_accusative
 
 
 def main_menu_kb(
     continuation_hero: str | None = None,
     continuation_child: str | None = None,
 ) -> InlineKeyboardMarkup:
-    """Главное меню. Если у юзера есть прошлая сказка, первая кнопка превращается
-    в «Новое приключение про {child} и {hero}» — антология, не cliffhanger.
-    Никаких обещаний выполнить — просто продолжение знакомства."""
+    """Главное меню. Параметры continuation_* оставлены в сигнатуре для
+    обратной совместимости с местами, которые их передают, но больше не
+    используются — концепция «продолжения серии про того же героя» убрана:
+    каждая сказка теперь самостоятельная и сюжетно непредсказуемая.
+    """
+    _ = continuation_hero, continuation_child  # legacy, не используются
     kb = InlineKeyboardBuilder()
-    if continuation_hero and continuation_child:
-        kb.button(
-            text=f"🕯 Новая глава про {accusative(continuation_child)} и {hero_accusative(continuation_hero)}",
-            callback_data="story:continue",
-        )
-        kb.button(text="✨ Совсем другая история", callback_data="story:new")
-    else:
-        kb.button(text="🪶 Сложить сегодняшнюю сказку", callback_data="story:new")
+    kb.button(text="🪶 Сложить сегодняшнюю сказку", callback_data="story:new")
     kb.button(text="📚 Наша книжная полка", callback_data="lib:open")
     kb.button(text="🌟 Тарифы и подписка", callback_data="bill:plans")
     kb.button(text="💌 Пригласить близких — сказка в подарок", callback_data="ref:share")
@@ -31,21 +26,11 @@ def main_menu_kb(
 
 
 def age_kb() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    for label, val in [("3–4 года", 4), ("5–6 лет", 6), ("7–8 лет", 7), ("9–11 лет", 10)]:
-        kb.button(text=label, callback_data=f"age:{val}")
-    kb.button(text="◀ Назад", callback_data="story:cancel")
-    kb.adjust(2, 2, 1)
-    return kb.as_markup()
-
-
-def age_kb() -> InlineKeyboardMarkup:
     """Клавиатура выбора возраста: 3-4 или 5-6 лет.
     Возраст определяет, какой промпт получит сказочник:
     - 3-4 → toddler-промпт (8 архитектур, проще, обязательная счастливая развязка)
     - 5-6 → основной промпт (25 архитектур, сюрреализм, философская грань)
-    В callback_data передаём середину диапазона (4 или 6), чтобы остался
-    одним числом в БД и совместим с существующей колонкой child_age.
+    В callback_data передаём середину диапазона (4 или 6).
     """
     kb = InlineKeyboardBuilder()
     kb.button(text="👶 3-4 года", callback_data="age:4")
@@ -132,16 +117,13 @@ def after_story_kb(
     hero: str | None = None,
     child_name: str | None = None,
 ) -> InlineKeyboardMarkup:
+    """Клавиатура после сказки. Параметры has_sequel/hero/child_name
+    оставлены в сигнатуре для обратной совместимости — больше не
+    используются (продолжение серии убрано, см. main_menu_kb)."""
+    _ = has_sequel, hero, child_name
     kb = InlineKeyboardBuilder()
-    if has_sequel and hero and child_name:
-        kb.button(
-            text=f"🔮 Завтра — новое приключение про {accusative(child_name)} и {hero_accusative(hero)}",
-            callback_data="story:continue",
-        )
-        kb.button(text="🌟 Другие герои, другой мир", callback_data="story:new")
-    else:
-        kb.button(text="Ещё одну сказку", callback_data="story:new")
-    kb.button(text="Подарить эту сказку другу", callback_data=f"gift:share:{story_id}")
+    kb.button(text="🪶 Ещё одну сказку", callback_data="story:new")
+    kb.button(text="🎁 Подарить эту сказку другу", callback_data=f"gift:share:{story_id}")
     kb.button(text="◀ В меню", callback_data="menu:main")
     kb.adjust(1)
     return kb.as_markup()
