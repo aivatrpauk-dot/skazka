@@ -261,6 +261,20 @@ async def m_child_name(message: Message, state: FSMContext) -> None:
     await state.set_state(StoryWizard.waiting_child_age)
 
 
+@router.callback_query(F.data == "story:change_name")
+async def cb_change_name(call: CallbackQuery, state: FSMContext) -> None:
+    """Юзер нажал «◀ Назад» в окне выбора возраста — хочет ввести имя
+    другого ребёнка вместо сохранённого. Чистим имя из state и просим
+    ввести новое.
+    """
+    await state.update_data(child_name=None)
+    await call.message.edit_text(
+        "🕯 Напишите имя ребёнка."
+    )
+    await state.set_state(StoryWizard.waiting_child_name)
+    await call.answer()
+
+
 @router.callback_query(StoryWizard.waiting_child_age, F.data.startswith("age:"))
 async def cb_child_age(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     """Юзер выбрал возрастную группу — сохраняем и запускаем генерацию.
@@ -631,8 +645,12 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         # - возраст определяет выбор промпта (3-4 toddler / 5-6 kids);
         # - у родителя может быть несколько детей разного возраста;
         # - ребёнок может вырасти из toddler-промпта в kids-промпт.
-        if not u_db.child_name:
-            u_db.child_name = data["child_name"]
+        # И child_name, и child_age перезаписываем КАЖДЫЙ раз, потому что:
+        # - у родителя может быть несколько детей разного возраста и имени;
+        # - после нажатия «Назад» юзер вводит другое имя — оно должно стать
+        #   новым «дефолтом» при следующем заходе в визард;
+        # - возраст определяет выбор промпта (3-4 toddler / 5-6 kids).
+        u_db.child_name = data["child_name"]
         u_db.child_age = int(data.get("child_age") or 5)
         story_obj = Story(
             user_id=u_db.id,

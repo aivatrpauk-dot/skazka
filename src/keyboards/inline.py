@@ -30,12 +30,13 @@ def age_kb() -> InlineKeyboardMarkup:
     Возраст определяет, какой промпт получит сказочник:
     - 3-4 → toddler-промпт (8 архитектур, проще, обязательная счастливая развязка)
     - 5-6 → основной промпт (25 архитектур, сюрреализм, философская грань)
-    В callback_data передаём середину диапазона (4 или 6).
+    «Назад» ведёт на смену имени ребёнка (story:change_name), а не на cancel
+    — потому что текст приглашения «нажмите Назад и впишите имя» это и обещал.
     """
     kb = InlineKeyboardBuilder()
     kb.button(text="👶 3-4 года", callback_data="age:4")
     kb.button(text="🧒 5-6 лет", callback_data="age:6")
-    kb.button(text="◀ Назад", callback_data="story:cancel")
+    kb.button(text="◀ Назад", callback_data="story:change_name")
     kb.adjust(2, 1)
     return kb.as_markup()
 
@@ -117,13 +118,21 @@ def after_story_kb(
     hero: str | None = None,
     child_name: str | None = None,
 ) -> InlineKeyboardMarkup:
-    """Клавиатура после сказки. Параметры has_sequel/hero/child_name
-    оставлены в сигнатуре для обратной совместимости — больше не
-    используются (продолжение серии убрано, см. main_menu_kb)."""
-    _ = has_sequel, hero, child_name
+    """Клавиатура после сказки. Параметры story_id/has_sequel/hero/child_name
+    оставлены в сигнатуре для обратной совместимости — больше не используются.
+
+    Почему так минималистично:
+    - «Ещё одну сказку» УБРАНА. У нас жёсткий лимит — одна сказка в день
+      для всех (даже для подписки и пакета). Кнопка вела на ложное обещание:
+      юзер кликал, проходил визард, и его блокировал daily-лимит.
+    - «🎁 Подарить сказку другу» — ведёт на ОБЩИЙ gift-флоу (создание новой
+      подарочной сказки для близкого), не на «переслать эту сказку». Тоже
+      логичнее: люди не «делятся прочитанной сказкой», они «дарят сказку».
+    - «В меню» — возврат в главное меню.
+    """
+    _ = story_id, has_sequel, hero, child_name
     kb = InlineKeyboardBuilder()
-    kb.button(text="🪶 Ещё одну сказку", callback_data="story:new")
-    kb.button(text="🎁 Подарить эту сказку другу", callback_data=f"gift:share:{story_id}")
+    kb.button(text="🎁 Подарить сказку другу", callback_data="gift:new")
     kb.button(text="◀ В меню", callback_data="menu:main")
     kb.adjust(1)
     return kb.as_markup()
