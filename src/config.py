@@ -121,8 +121,22 @@ class Config:
     # (тренируется на картинках из style_references/). Если задан —
     # image.py передаёт его в Recraft вместо встроенного preset'а
     # (digital_illustration/hand_drawn и т.п.) и модель рисует в нашем
-    # натренированном книжном стиле. Если пусто — фолбэк на hand_drawn.
+    # натренированном книжном стиле. Если пусто — фолбэк на встроенный
+    # preset (см. recraft_style_preset).
     recraft_style_id: str = field(default_factory=lambda: _env("RECRAFT_STYLE_ID", ""))
+
+    # Recraft built-in preset (fallback когда recraft_style_id пуст). Можно
+    # быстро менять через .env без редактирования кода. Варианты:
+    #   digital_illustration/hand_drawn       — рисованный, иногда крайон-вайб
+    #   digital_illustration/2d_art_poster    — плотный графичный, насыщенный
+    #   digital_illustration/grain            — добавляет зернистую текстуру
+    #   digital_illustration/storybook_rough  — атмосферная книжная иллюстрация
+    #   digital_illustration/hand_drawn_outline — рисованный с подчёркнутым контуром
+    #   digital_illustration                  — без подстиля (Netflix-glossy)
+    # Дефолт hand_drawn оставляем для backward compat.
+    recraft_style_preset: str = field(default_factory=lambda: _env(
+        "RECRAFT_STYLE_PRESET", "digital_illustration/hand_drawn"
+    ))
 
     # Legacy: если задан FAL_MODEL — переопределяет image_model (backward compat).
     fal_model_legacy: str = field(default_factory=lambda: _env("FAL_MODEL", ""))

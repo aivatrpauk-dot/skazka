@@ -331,7 +331,10 @@ async def _generate_recraft_direct(prompt: str, out: Path) -> Path | None:
     if config.recraft_style_id:
         payload["style_id"] = config.recraft_style_id
     else:
-        payload["style"] = "digital_illustration/hand_drawn"
+        # Встроенный preset берётся из .env RECRAFT_STYLE_PRESET. Дефолт —
+        # hand_drawn. Чтобы поменять preset — просто меняешь .env и
+        # пересобираешь контейнер, код не трогаешь.
+        payload["style"] = config.recraft_style_preset
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:
