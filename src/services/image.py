@@ -97,7 +97,12 @@ async def generate_cover(
         wrap = "World: "
         suffix = no_text_suffix
         budget = 975 - len(style_prompt) - len(wrap) - len(suffix) - 2
-        if budget < 30:
+        if budget < 5:
+            # Стиль реально упёрся в лимит — мотив не влезет вообще.
+            # Раньше порог был 30; при стиле 915 char бюджет=29 < 30 →
+            # все три картинки получали идентичный prompt и Recraft
+            # рисовал визуально похожие сцены без вариации. Теперь
+            # пускаем даже короткий обрезанный hint.
             prompt = f"{style_prompt}{suffix}"
         else:
             if len(scene_hint) > budget:
