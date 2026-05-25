@@ -29,13 +29,10 @@ from ..prompts import (
     EXTRACT_THREE_SCENES_PROMPT,
     SERIES_CONTEXT_TEMPLATE,
     SYSTEM_GIFT_STORYTELLER,
-    SYSTEM_STORYTELLER,
-    SYSTEM_STORYTELLER_SIMPLE_WONDER,
-    SYSTEM_STORYTELLER_TODDLER,
     THEME_CHOICES,
-    parse_story_marker,
+    build_story_user_message,
     parse_story_title,
-    pick_storyteller_prompt,
+    pick_storyteller_concept,
 )
 
 logger = logging.getLogger(__name__)
@@ -256,84 +253,53 @@ async def generate_story(
     *,
     child_name: str,
     child_age: int,
+    form: str,
+    humor: str,
+    genre: str,
+    opening: str,
+    tone: str,
+    paid_quality: bool = True,
+    # legacy params — больше не используются, оставлены для совместимости
+    # со старыми вызовами / тестами:
     hero: str = "",
     theme_key: str = "",
     length: str = "",
-    paid_quality: bool = True,
     previous_summary: str | None = None,
-    last_story_group: str | None = None,
-    last_story_architecture: int | None = None,
-    last_story_humor_register: int | None = None,
-    last_story_category: str | None = None,
-) -> tuple[str, str | None, int | None, int | None, str | None, str | None]:
-    """Генерирует сказку. Возвращает кортеж:
-    (чистый текст, группа, архитектура, регистр юмора, название, категория).
+) -> tuple[str, str | None]:
+    """Генерирует сказку. Возвращает (чистый текст, название).
 
-    Сказочник сам выбирает группу и архитектуру из 25 шаблонов. Чтобы он
-    не повторял группу два дня подряд — мы храним `last_story_group` в БД
-    юзера и передаём сюда. Если передано — модель получает явную подсказку
-    «вчера была группа X, сегодня другая».
+    Параметры сказки (form, humor, genre, opening, tone) выбирает БОТ
+    через src/services/story_params.pick_params() ДО вызова этой
+    функции — он же сохраняет историю used-массивов в БД после
+    успешной генерации. Модель здесь не выбирает архитектуру, не
+    пишет служебный маркер, просто получает 5 слов как направление
+    и пишет одну сказку.
 
-    Первой строкой модель пишет маркер «Группа В, архитектура 11 — …»,
-    который мы парсим, сохраняем в БД и обрезаем от текста.
+    Это смена парадигмы от старой схемы (модель выбирала из списков
+    + писала маркер первой строкой + мы парсили + сохраняли). Теперь:
+    бот → выбирает → сообщает модели готовое.
 
-    hero / theme_key / length / previous_summary — оставлены для обратной
-    совместимости с вызовами из старого UI, в новом промпте игнорируются.
-
-    paid_quality — для Gemini выбор между Flash-Lite (дёшево) и Flash (лучше).
+    paid_quality — для Gemini fallback: True = Flash, False = Flash-Lite.
     Для Anthropic игнорируется (всегда полное качество Sonnet 4.6).
     """
     _ = hero, theme_key, length, previous_summary  # legacy, не используется
 
-    # Выбираем промпт по возрасту + чередуем жанры (MP↔SW) для 5-6:
-    # 3-4 → toddler (8 архитектур, проще, добрее).
-    # 5-6 → ЧЕРЕДУЕМ: «Маленький принц» (MP) и «простое волшебство» (SW)
-    #       выбирается на основе last_story_category. Логика в
-    #       pick_storyteller_prompt(): если прошлая была MP → сейчас SW,
-    #       и наоборот.
-    storyteller_prompt, rotation_hint_template, this_category = pick_storyteller_prompt(
-        child_age, last_story_category,
-    )
-    prompt_label = {
-        SYSTEM_STORYTELLER_TODDLER: "toddler",
-        SYSTEM_STORYTELLER: "MP (Маленький принц)",
-        SYSTEM_STORYTELLER_SIMPLE_WONDER: "SW (простое волшебство)",
-    }.get(storyteller_prompt, "unknown")
+    # Концептуальный промпт — статический, полностью кэшируется
+    # Anthropic prompt caching (нет {placeholder}, идентичный текст
+    # для всех юзеров).
+    concept_prompt = pick_storyteller_concept(child_age)
+    concept_label = "3-4 (toddler)" if child_age <= 4 else "5-6 (senior)"
     logger.info(
-        "Выбран промпт: %s для возраста %d (предыдущая категория: %s)",
-        prompt_label, child_age, last_story_category or "—",
+        "Сказка для %s, %d лет: concept=%s, форма=%s, юмор=%s, "
+        "жанр=%s, зачин=%s, интонация=%s",
+        child_name, child_age, concept_label,
+        form, humor, genre, opening, tone,
     )
-
-    # Rotation hint работает ТОЛЬКО внутри одной категории. Если категория
-    # сменилась (альтернация MP↔SW) — нумерация архитектур в новой
-    # категории другая, старая подсказка бессмысленна, передаём пустую.
-    category_unchanged = (
-        last_story_category == this_category
-        or (this_category == "TODDLER" and last_story_category in (None, "TODDLER"))
-    )
-    if category_unchanged and last_story_architecture and last_story_humor_register:
-        rotation_hint = rotation_hint_template.format(
-            last_group=last_story_group or "",
-            last_architecture=last_story_architecture,
-            last_humor_register=last_story_humor_register,
-        )
-    elif category_unchanged and last_story_architecture:
-        # Legacy fallback — только архитектура известна, регистр свободен.
-        rotation_hint = (
-            f"Предыдущая сказка была по архитектуре №{last_story_architecture}. "
-            "Сегодня — выбери другую архитектуру и любой регистр юмора."
-        )
-    else:
-        # Первая сказка ИЛИ смена категории — подсказку не передаём.
-        rotation_hint = ""
 
     # Гендер-префикс для имени. Если наш словарь CIS-имён знает гендер
     # (Амина, Айдар, Тимур, Айгуль), подставляем «девочки» или «мальчика»
-    # в первое же предложение промпта: «Напиши сказку для девочки по имени
-    # Амина, 5 лет». Модель сразу видит гендер из одного слова и склоняет
-    # имя правильно во всём тексте. Если гендер неизвестен (классические
-    # русские имена — Маша, Серёжа) — нейтральное «ребёнка», petrovich/
-    # pymorphy сами справятся.
+    # в первое предложение user_message. Если неизвестен — нейтральное
+    # «ребёнка», petrovich/pymorphy сами справятся со склонением.
     from ..utils import detect_name_gender as _detect_gender
     _gender_hint = _detect_gender(child_name)
     if _gender_hint is not None:
@@ -342,28 +308,30 @@ async def generate_story(
     else:
         _name_intro = "ребёнка"
 
-    format_params = {
-        "child_name": child_name,
-        "child_age": child_age,
-        "rotation_hint": rotation_hint,
-        "name_intro": _name_intro,
-    }
-    user_message = "Напиши сказку. Не забудь маркер архитектуры первой строкой."
+    user_message = build_story_user_message(
+        name_intro=_name_intro,
+        child_name=child_name,
+        child_age=child_age,
+        form=form,
+        humor=humor,
+        genre=genre,
+        opening=opening,
+        tone=tone,
+    )
 
     provider = config.llm_provider
     text = ""
     try:
         if provider == "anthropic":
             text = await _generate_anthropic(
-                system_template=storyteller_prompt,
-                format_params=format_params,
+                system_template=concept_prompt,
+                format_params={},  # концепт-промпт статический, нечего подставлять
                 user_message=user_message,
             )
         else:
             model_name = config.gemini_model_paid if paid_quality else config.gemini_model_free
-            full_system = storyteller_prompt.format(**format_params)
             text = await _generate_gemini(
-                system_prompt=full_system,
+                system_prompt=concept_prompt,
                 user_message=user_message,
                 model_name=model_name,
             )
@@ -372,17 +340,16 @@ async def generate_story(
         logger.exception("LLM %s упал: %s", provider, e)
         if provider == "anthropic" and config.gemini_api_key:
             logger.warning("LLM fallback на Gemini Flash")
-            full_system = storyteller_prompt.format(**format_params)
             text = await _generate_gemini(
-                system_prompt=full_system,
+                system_prompt=concept_prompt,
                 user_message=user_message,
                 model_name=config.gemini_model_paid,
             )
         elif provider == "gemini" and config.anthropic_api_key:
             logger.warning("LLM fallback на Anthropic")
             text = await _generate_anthropic(
-                system_template=storyteller_prompt,
-                format_params=format_params,
+                system_template=concept_prompt,
+                format_params={},
                 user_message=user_message,
             )
         else:
@@ -391,28 +358,17 @@ async def generate_story(
     if not text:
         raise RuntimeError("LLM вернул пустой ответ")
 
-    # Парсим маркер первой строки. Возвращает 5 значений:
-    # (cleaned, group, architecture, humor_register, category).
-    # category — "MP" / "SW" / "TODDLER" / None.
-    cleaned, group, architecture, humor_register, category = parse_story_marker(text)
-    if category is None:
-        logger.warning(
-            "LLM не вернул маркер категории/архитектуры. Альтернация не сработает на следующей сказке."
-        )
-    else:
-        logger.info(
-            "Сказка: категория %s, группа %s, архитектура %s, регистр юмора %s",
-            category, group, architecture, humor_register,
-        )
-
-    # Парсим название во второй строке (в «ёлочках») и тоже обрезаем.
-    cleaned, title = parse_story_title(cleaned)
+    # Парсим название первой строкой (с кавычками или без) и обрезаем.
+    cleaned, title = parse_story_title(text)
     if title:
         logger.info("Название сказки: %s", title)
     else:
-        logger.warning("LLM не вернул название сказки в «ёлочках». Используется fallback.")
+        logger.warning(
+            "LLM не вернул отдельную строку с названием — используется fallback "
+            "из THEME_CHOICES или генератор-заглушка."
+        )
 
-    return _clean_story_text(cleaned), group, architecture, humor_register, title, category
+    return _clean_story_text(cleaned), title
 
 
 async def generate_gift_story(
@@ -506,8 +462,11 @@ async def extract_three_scenes(story_text: str) -> dict[str, str] | None:
         response = await model.generate_content_async(
             EXTRACT_THREE_SCENES_PROMPT.format(story_text=story_text[:4000]),
             generation_config={
+                # 800 токенов с запасом: 3 сцены × 3-5 предложений × ~25
+                # токенов + JSON-обёртка ≈ 500-600 токенов. Раньше стояло
+                # 500 — на границе, при длинных сценах JSON мог обрезаться.
                 "temperature": 0.3,
-                "max_output_tokens": 500,
+                "max_output_tokens": 800,
                 # response_mime_type для гарантии JSON. Gemini 2.5 поддерживает.
                 "response_mime_type": "application/json",
             },

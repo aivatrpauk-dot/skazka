@@ -64,6 +64,19 @@ INLINE_MIGRATIONS = [
     # vs «SW» (Simple Wonder, классическое сказочное приключение). Для
     # возраста 5-6 ротируется между ними; для 3-4 всегда «TODDLER».
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_story_category VARCHAR(8)',
+    # ─── 5 осей разнообразия с зацикленной ротацией (May 2026) ───
+    # Бот теперь сам выбирает параметры сказки перед запросом к LLM:
+    # «случайно из словарь минус used», где used — список уже использован-
+    # ных значений в текущем цикле. Когда used == словарь → reset. Так
+    # каждая ось проходит полный круг прежде чем повториться. Маркер из
+    # ответа модели больше не парсится. См. src/services/story_params.py.
+    #
+    # JSON DEFAULT '[]' даёт пустой массив сразу — иначе на старых юзерах
+    # был бы NULL и pick_params() должен был бы это обрабатывать.
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS used_architectures JSON DEFAULT '[]'::json",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS used_humors JSON DEFAULT '[]'::json",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS used_openings JSON DEFAULT '[]'::json",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS used_tones JSON DEFAULT '[]'::json",
     # ─── PDF в библиотеке (May 2026) ───
     # Раньше Story.image_path использовался как обложка + библиотека отдавала
     # текст+картинку+аудио. Теперь продукт чище: одна PDF-книжка. Колонка

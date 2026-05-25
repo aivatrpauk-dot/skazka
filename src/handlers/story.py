@@ -357,7 +357,9 @@ async def cb_child_age(call: CallbackQuery, state: FSMContext, bot: Bot) -> None
 
     Героя и тему НЕ спрашиваем — сказочник сам решает, кого позвать и о
     чём рассказать сегодня. callback_data = «age:4» (toddler) / «age:6»
-    (kids). pick_storyteller_prompt() в llm.py выбирает промпт по числу.
+    (kids). pick_storyteller_concept() в prompts.py выбирает концепт-
+    промпт по возрасту, pick_params() в story_params.py выбирает 5
+    параметров сегодняшней сказки из словарей.
 
     hero и theme_key выставляем пустыми — downstream код умеет это
     обрабатывать: PDF-заголовок становится «Ночная сказка для Маши»,
@@ -498,40 +500,42 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # В премиум-стеке всегда полное качество (Azure + Sonnet + Recraft).
     full_quality = True
 
-    # ─ Альтернация жанров + ротация архитектур и регистров.
-    # last_story_category управляет ЧЕРЕДОВАНИЕМ двух жанров для 5-6 лет:
-    # MP (Маленький принц, литературный) ↔ SW (простое волшебство).
-    # last_story_group/architecture/humor_register управляют ротацией ВНУТРИ
-    # категории (чтобы не повторять архитектуру и регистр).
-    last_group = u.last_story_group
-    last_arch = u.last_story_architecture
-    last_humor = u.last_story_humor_register
-    last_category = u.last_story_category
-    if last_category or last_arch:
-        logger.info(
-            "Ротация: предыдущая для user=%s — категория %s, группа %s, архитектура %s, регистр %s",
-            u.telegram_id, last_category, last_group, last_arch, last_humor,
-        )
+    # ─ Выбор параметров сказки на стороне бота («казино»).
+    # Раньше: модель сама выбирала архитектуру из 25 шаблонов и писала
+    # маркер первой строкой, мы парсили и сохраняли. Теперь: бот сам
+    # выбирает 5 параметров (форма/юмор/жанр/зачин/интонация) из словарей,
+    # исключая всё, что использовалось в текущем цикле этого ребёнка.
+    # Модель просто получает 5 слов и пишет одну сказку.
+    from ..services.story_params import pick_params
+    child_age_int = int(data.get("child_age") or 5)
+    params = pick_params(
+        child_age=child_age_int,
+        used_architectures=u.used_architectures or [],
+        used_humors=u.used_humors or [],
+        used_openings=u.used_openings or [],
+        used_tones=u.used_tones or [],
+        last_category=u.last_story_category,
+    )
+    logger.info(
+        "Параметры сказки для user=%s: форма=%s, юмор=%s, жанр=%s, "
+        "зачин=%s, интонация=%s (cat=%s)",
+        u.telegram_id, params.form, params.humor, params.genre,
+        params.opening, params.tone, params.new_category,
+    )
 
     try:
-        (
-            text,
-            story_group,
-            story_architecture,
-            story_humor_register,
-            story_title,
-            story_category,
-        ) = await generate_story(
+        text, story_title = await generate_story(
             child_name=data["child_name"],
-            child_age=int(data.get("child_age") or 5),
+            child_age=child_age_int,
+            form=params.form,
+            humor=params.humor,
+            genre=params.genre,
+            opening=params.opening,
+            tone=params.tone,
+            paid_quality=full_quality,
             hero=data["hero"],
             theme_key=data["theme_key"],
             length=length,
-            paid_quality=full_quality,
-            last_story_group=last_group,
-            last_story_architecture=last_arch,
-            last_story_humor_register=last_humor,
-            last_story_category=last_category,
         )
     except Exception as e:
         logger.exception("Ошибка генерации сказки: %s", e)
@@ -541,23 +545,30 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         )
         return
 
-    # Сохраняем выбранные сегодня параметры в БД юзера — для альтернации
-    # жанров (MP↔SW) и ротации архитектур на следующий раз. Делаем СРАЗУ
-    # после успешной генерации, до длинного пайплайна PDF/картинок (если
-    # что-то ниже упадёт — ротация всё равно сдвинется).
-    if story_category or story_architecture:
-        async with Session() as s:
-            await s.execute(
-                update(User)
-                .where(User.id == u.id)
-                .values(
-                    last_story_category=story_category,
-                    last_story_group=story_group,
-                    last_story_architecture=story_architecture,
-                    last_story_humor_register=story_humor_register,
-                )
+    # Сохраняем обновлённые used-массивы для ротации на следующий раз.
+    # Делаем СРАЗУ после успешной генерации, до длинного пайплайна
+    # PDF/картинок — если что-то ниже упадёт, ротация всё равно сдвинется
+    # (пользователю не выпадет та же комбинация подряд).
+    # Legacy-колонки last_story_architecture/humor_register/group/category
+    # тоже обновляем — для дашбордов и обратной совместимости.
+    async with Session() as s:
+        # Извлекаем последний индекс архитектуры из массива (для legacy)
+        last_arch_idx = params.new_used_architectures[-1] if params.new_used_architectures else None
+        last_humor_idx = params.new_used_humors[-1] if params.new_used_humors else None
+        await s.execute(
+            update(User)
+            .where(User.id == u.id)
+            .values(
+                used_architectures=params.new_used_architectures,
+                used_humors=params.new_used_humors,
+                used_openings=params.new_used_openings,
+                used_tones=params.new_used_tones,
+                last_story_category=params.new_category,
+                last_story_architecture=last_arch_idx,
+                last_story_humor_register=last_humor_idx,
             )
-            await s.commit()
+        )
+        await s.commit()
 
     # ─────────────────── Новый flow (USE_TTS=false): PDF-книжка + ambient ───────────────────
     # Стандартный путь после рефакторинга: бот НЕ читает сказку голосом —

@@ -4,7 +4,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -92,18 +92,31 @@ class User(Base):
     # одна история перед сном, не три. Защита от спама и формирование привычки.
     last_story_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # Ротация архитектур и регистров юмора сказки. Сказочник пишет первой
-    # строкой «Группа В, архитектура 14 — ...; регистр 1 — ...»; парсер
-    # вытягивает букву группы (А/Б/В/Г), номер архитектуры (1..25) и номер
-    # регистра юмора (1..9), складывает сюда. На следующей сказке мы
-    # передаём это в промпт, чтобы модель не повторила ни группу, ни регистр.
+    # Ротация по 5 осям разнообразия (см. src/services/story_params.py).
+    # Логика «по кругу»: бот хранит ПО КАЖДОЙ оси список значений, уже
+    # использованных в текущем цикле. На новой сказке выбирает случайно
+    # из «словарь минус used». Когда used == словарь → цикл завершён,
+    # used обнуляется. Так комбинации параметров не повторяются подряд
+    # внутри каждой оси, и общая комбинация повторится не раньше, чем
+    # будет исчерпан самый короткий из словарей × длина зацикленных пар.
+    #
+    # used_architectures — JSONB list[int], номера 1..25 (или 1..8 для 3-4)
+    # used_humors — list[int], 1..9 (или 1..5)
+    # used_openings — list[str], названия зачинов из story_params.OPENINGS
+    # used_tones — list[str], названия интонаций из story_params.TONES
+    # last_story_category — буква жанра прошлой сказки для альтернации
+    #   MP↔SW у 5-6 лет (для 3-4 всегда «TODDLER»). Жанр у нас бинарный,
+    #   поэтому отдельный used_genres не нужен — last достаточно.
+    #
+    # Legacy-колонки last_story_group/architecture/humor_register остаются
+    # для backwards compat и дашбордов; в новой логике не читаются.
+    used_architectures: Mapped[list[int] | None] = mapped_column(JSON, default=list)
+    used_humors: Mapped[list[int] | None] = mapped_column(JSON, default=list)
+    used_openings: Mapped[list[str] | None] = mapped_column(JSON, default=list)
+    used_tones: Mapped[list[str] | None] = mapped_column(JSON, default=list)
     last_story_group: Mapped[str | None] = mapped_column(String(1))
     last_story_architecture: Mapped[int | None] = mapped_column(Integer)
     last_story_humor_register: Mapped[int | None] = mapped_column(Integer)
-    # Категория жанра прошлой сказки. Используется для чередования стилей
-    # у возраста 5-6: «MP» (Маленький принц, литературный сюр) <→ «SW»
-    # (Simple Wonder, классическое сказочное приключение). Для 3-4 всегда
-    # «TODDLER». NULL = ещё ни одной сказки не было.
     last_story_category: Mapped[str | None] = mapped_column(String(8))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
