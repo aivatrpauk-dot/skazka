@@ -205,6 +205,57 @@ async def _get_user(telegram_id: int) -> User:
 # сказочник сам выбирает героя и архитектуру. См. main_menu_kb и after_story_kb.
 
 
+async def _get_user_child_names(user_id: int) -> list[str]:
+    """Возвращает список имён детей этого юзера в порядке последнего
+    использования. Берём из таблицы Story (по DISTINCT child_name).
+    Плюс если у юзера в User.child_name что-то лежит, а в Story ещё ничего
+    нет (legacy) — кладём его в список первым.
+    """
+    from sqlalchemy import func
+    async with Session() as s:
+        rows = (await s.execute(
+            select(
+                Story.child_name,
+                func.max(Story.created_at).label("last_used"),
+            )
+            .where(Story.user_id == user_id)
+            .group_by(Story.child_name)
+            .order_by(desc("last_used"))
+            .limit(10)
+        )).all()
+        names = [r[0] for r in rows if r[0]]
+        # Если у юзера в User.child_name есть имя без сказок (legacy) —
+        # добавим первым, чтобы не потерять.
+        u = (await s.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+        if u and u.child_name and u.child_name not in names:
+            names.insert(0, u.child_name)
+    return names
+
+
+async def _was_story_for_child_today(user_id: int, child_name: str) -> bool:
+    """Возвращает True, если у юзера УЖЕ была сказка для ЭТОГО ребёнка
+    сегодня (по МСК). Дата сравнивается по МСК-календарю, не по часам.
+
+    Это новая логика daily-лимита: лимит 1/день привязан к ИМЕНИ ребёнка,
+    а не к юзеру в целом. Поэтому родитель с двумя детьми (Маша и Ваня)
+    может сделать одну сказку для Маши и одну для Вани в один день.
+    """
+    import datetime as _dt
+    async with Session() as s:
+        last = (await s.execute(
+            select(Story.created_at)
+            .where(Story.user_id == user_id, Story.child_name == child_name)
+            .order_by(desc(Story.created_at))
+            .limit(1)
+        )).scalar_one_or_none()
+    if not last:
+        return False
+    MSK_TZ = _dt.timezone(_dt.timedelta(hours=3))
+    now_msk = _dt.datetime.now(_dt.timezone.utc).astimezone(MSK_TZ).date()
+    last_msk = last.astimezone(MSK_TZ).date()
+    return last_msk == now_msk
+
+
 @router.callback_query(F.data == "story:new")
 async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
     u = await _get_user(call.from_user.id)
@@ -216,25 +267,50 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
         await call.answer()
         return
 
-    if u.child_name:
-        # уже знаем ребёнка — но «версию» (возраст) спрашиваем заново каждый
-        # раз: у родителя может быть несколько детей, и версия определяет,
-        # какой промпт получит сказочник (toddler / kids).
-        await state.update_data(child_name=u.child_name)
-        name_gen = genitive(u.child_name)        # для Лизы (родительный)
+    # Имя ВСЕГДА спрашиваем заново. Если у юзера уже были сказки — даём
+    # список последних имён + «Другое имя». Если это первая сказка — сразу
+    # просим написать имя.
+    from ..keyboards import name_choice_kb
+    names = await _get_user_child_names(u.id)
+    if names:
         await call.message.edit_text(
-            f"Сегодня сказка для <b>{name_gen}</b>.\n"
-            f"<i>Если на этот вечер у Вас другой ребёнок — нажмите «Назад» "
-            f"и впишите имя.</i>\n\n"
-            "Выбирайте версию, которая больше нравится ребёнку.",
-            reply_markup=age_kb(),
+            "🕯 Для кого сегодня сказка?\n"
+            "<i>Выберите ребёнка из списка или введите другое имя.</i>",
+            reply_markup=name_choice_kb(names),
         )
-        await state.set_state(StoryWizard.waiting_child_age)
+        await state.set_state(StoryWizard.waiting_name_choice)
         await call.answer()
         return
 
     await call.message.edit_text(
         "🕯 Как зовут ребёнка? Напишите имя.",
+    )
+    await state.set_state(StoryWizard.waiting_child_name)
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("name:pick:"))
+async def cb_name_pick(call: CallbackQuery, state: FSMContext) -> None:
+    """Юзер выбрал ИМЯ из списка прежних → сохраняем и идём к выбору возраста."""
+    name = call.data.split(":", 2)[2]
+    if not name:
+        await call.answer("Пустое имя", show_alert=True)
+        return
+    await state.update_data(child_name=name)
+    await call.message.edit_text(
+        "Выбирайте версию, которая больше нравится ребёнку.",
+        reply_markup=age_kb(),
+    )
+    await state.set_state(StoryWizard.waiting_child_age)
+    await call.answer()
+
+
+@router.callback_query(F.data == "name:new")
+async def cb_name_new(call: CallbackQuery, state: FSMContext) -> None:
+    """Юзер выбрал «Другое имя» → просим ввести новое."""
+    await state.update_data(child_name=None)
+    await call.message.edit_text(
+        "🕯 Напишите имя ребёнка.",
     )
     await state.set_state(StoryWizard.waiting_child_name)
     await call.answer()
@@ -376,25 +452,24 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         await call.answer(msg or "Слишком быстро", show_alert=True)
         return
 
-    # ───── Лимит 1 сказка в КАЛЕНДАРНЫЙ ДЕНЬ (по Москве) ─────
-    # Сбрасывается в полночь по МСК. Админы (config.admin_ids) обходят
-    # этот лимит — нужно для свободного тестирования прода без чисток.
+    # ───── Лимит 1 сказка в день НА ИМЯ РЕБЁНКА (по Москве) ─────
+    # Логика: лимит «одна сказка в день» привязан к ИМЕНИ ребёнка, не к
+    # юзеру в целом. У родителя с двумя детьми (Маша, Ваня) сегодня может
+    # быть и сказка для Маши, и сказка для Вани — это не нарушает «один
+    # ритуал в день для одного ребёнка». Сбрасывается в полночь по МСК.
+    # Админы (config.admin_ids) обходят лимит — для тестирования.
     u_pre = await _get_user(call.from_user.id)
     is_admin = u_pre.telegram_id in config.admin_ids
-    if u_pre.last_story_at and not is_admin:
-        import datetime as _dt
-        MSK_TZ = _dt.timezone(_dt.timedelta(hours=3))
-        now_msk_date = _dt.datetime.now(_dt.timezone.utc).astimezone(MSK_TZ).date()
-        last_msk_date = u_pre.last_story_at.astimezone(MSK_TZ).date()
-        if last_msk_date == now_msk_date:
-            # Уже была сегодня (по Москве)
+    pre_data = await state.get_data()
+    candidate_name = (pre_data.get("child_name") or "").strip()
+    if candidate_name and not is_admin:
+        if await _was_story_for_child_today(u_pre.id, candidate_name):
             await call.message.edit_text(
-                "🌙 На сегодня сказка уже была.\n\n"
-                "Пусть ребёнок подумает о ней перед сном и "
-                "спокойно уснёт — это и есть ритуал, где важно "
-                "качество, а не количество.\n\n"
-                "Завтра — новая. Заглядывайте, когда нужно "
-                "уложить.",
+                f"🌙 Для {genitive(candidate_name)} сказка уже была сегодня.\n\n"
+                "Пусть ребёнок подумает о ней перед сном и спокойно уснёт — "
+                "это и есть ритуал, где важно качество, а не количество.\n\n"
+                "Завтра — новая. А сейчас, если хотите, можно сделать сказку "
+                "для другого ребёнка.",
                 reply_markup=main_menu_kb(),
             )
             await call.answer()

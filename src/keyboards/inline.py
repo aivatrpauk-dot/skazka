@@ -25,6 +25,25 @@ def main_menu_kb(
     return kb.as_markup()
 
 
+def name_choice_kb(names: list[str]) -> InlineKeyboardMarkup:
+    """Клавиатура выбора ребёнка — список ранее использованных имён.
+    Если у юзера ДВА разных ребёнка, он каждый раз сам выбирает кому
+    сегодняшняя сказка. Плюс кнопка «Другое имя» — ввести новое имя
+    (например, если племянник пришёл в гости).
+
+    Имена в callback_data передаются URL-encoded на случай странных
+    символов в имени; обычно это просто кириллица или латиница.
+    """
+    kb = InlineKeyboardBuilder()
+    # До 5 последних имён в кнопках (больше не помещается в чате).
+    for name in names[:5]:
+        kb.button(text=f"👤 {name}", callback_data=f"name:pick:{name}")
+    kb.button(text="✏️ Другое имя", callback_data="name:new")
+    kb.button(text="◀ В меню", callback_data="story:cancel")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 def age_kb() -> InlineKeyboardMarkup:
     """Клавиатура выбора возраста: 3-4 или 5-6 лет.
     Возраст определяет, какой промпт получит сказочник:

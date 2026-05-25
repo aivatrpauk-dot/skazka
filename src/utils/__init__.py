@@ -8,6 +8,8 @@ from .text import (
     accusative,
     instrumental,
     prepositional,
+    # Авто-детект гендера по словарю CIS-имён (для passing в LLM-промпт)
+    detect_name_gender,
     # Для героев — нарицательных существительных (pymorphy3)
     hero_genitive,
     hero_dative,
@@ -25,6 +27,7 @@ __all__ = [
     "accusative",
     "instrumental",
     "prepositional",
+    "detect_name_gender",
     "hero_genitive",
     "hero_dative",
     "hero_accusative",

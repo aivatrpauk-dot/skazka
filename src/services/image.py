@@ -332,9 +332,18 @@ async def _generate_recraft_direct(prompt: str, out: Path) -> Path | None:
         payload["style_id"] = config.recraft_style_id
     else:
         # Встроенный preset берётся из .env RECRAFT_STYLE_PRESET. Дефолт —
-        # hand_drawn. Чтобы поменять preset — просто меняешь .env и
-        # пересобираешь контейнер, код не трогаешь.
-        payload["style"] = config.recraft_style_preset
+        # «digital_illustration/hand_drawn». Recraft Direct API ожидает
+        # «style» и «substyle» РАЗДЕЛЬНО (FAL-обёртка более либеральна и
+        # принимает слитную строку «digital_illustration/hand_drawn», но
+        # прямой API на такое отвечает 400 Invalid style). Разделяем по «/».
+        preset = config.recraft_style_preset or "digital_illustration/hand_drawn"
+        if "/" in preset:
+            style_top, substyle = preset.split("/", 1)
+            payload["style"] = style_top
+            if substyle:
+                payload["substyle"] = substyle
+        else:
+            payload["style"] = preset
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:

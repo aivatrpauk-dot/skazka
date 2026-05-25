@@ -334,6 +334,20 @@ async def generate_story(
     }
     user_message = "Напиши сказку. Не забудь маркер архитектуры первой строкой."
 
+    # Подсказка гендера для CIS/татарских/кавказских имён (Амина, Айдар,
+    # Тимур, Айгуль и т.п.). LLM иногда ошибается в склонении нестандартных
+    # имён — например, «Амину» как родительный множественного от «амины»
+    # → «Амин». Если наш словарь знает гендер — явно скажем модели.
+    from ..utils import detect_name_gender as _detect_gender
+    _gender_hint = _detect_gender(child_name)
+    if _gender_hint is not None:
+        from petrovich.enums import Gender as _G
+        _gender_text = "девочка" if _gender_hint == _G.FEMALE else "мальчик"
+        user_message += (
+            f" Важно: {child_name} — {_gender_text}. Склоняй имя правильно "
+            f"в каждом падеже."
+        )
+
     provider = config.llm_provider
     text = ""
     try:
