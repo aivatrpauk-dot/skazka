@@ -503,14 +503,16 @@ async def extract_three_scenes(story_text: str) -> dict[str, str] | None:
             if cleaned.lower().startswith("json"):
                 cleaned = cleaned[4:].strip()
         data = json.loads(cleaned)
-        # Валидация. Новый промпт требует ≤80 char на фразу; даём запас
-        # до 200 на случай, если Gemini пишет чуть длиннее. Лишнее
-        # обрежется в image.py по бюджету Recraft (по пробелу, не по
-        # символу). Если совсем коротко (<8) или сильно длиннее (>200) —
-        # промпт не сработал как задумано, лучше нарисовать без мотива.
+        # Валидация. Новый промпт требует ≤30 char на фразу; даём
+        # запас до 100 на случай если модель перебрала. Лишнее обрежется
+        # по бюджету Recraft (~28 char), хвост по пробелу. Если совсем
+        # коротко (<8) или сильно длиннее (>100) — промпт не сработал
+        # как задумано, лучше нарисовать без мотива.
+        # (NB: эта функция legacy для Gemini-пути, основной сейчас —
+        # storyteller через _SCENE_BLOCK_INSTRUCTIONS + parse_scenes_block.)
         for key in ("opening", "climax", "ending"):
             v = data.get(key)
-            if not isinstance(v, str) or not (8 < len(v) < 200):
+            if not isinstance(v, str) or not (8 < len(v) < 100):
                 logger.warning("extract_three_scenes: невалидный ключ %s = %r", key, v)
                 return None
         return {"opening": data["opening"], "climax": data["climax"], "ending": data["ending"]}

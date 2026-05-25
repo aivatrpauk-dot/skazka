@@ -138,13 +138,16 @@ _SCENE_BLOCK_INSTRUCTIONS = """
 — "ending" — что в мире сказки происходит, когда чудо успокоилось.
 
 ФОРМАТ:
-— одно английское предложение на каждую фазу;
-— до 80 символов;
+— одно ОЧЕНЬ КОРОТКОЕ английское предложение на каждую фазу;
+— строго до 30 символов; короче — лучше;
+— это всего одно действие или один факт о мире, не сцена целиком;
 — упоминай героя только обобщённо, без имени из сказки;
 — называй существ только обобщённо, без имён из сказки;
 — без описаний внешнего вида, цвета, света, настроения, атмосферы,
   времени суток, погоды;
-— без визуальных прилагательных.
+— без визуальных прилагательных;
+— вся живопись и атмосфера дорисуется иллюстратором отдельно — твоё
+  дело только подать суть момента.
 
 После сказки выводи СТРОГО в таком виде, без markdown, без комментариев:
 
@@ -278,7 +281,11 @@ def parse_scenes_block(text: str) -> tuple[str, dict[str, str] | None]:
     Если блока нет / JSON битый / ключи не валидные → None и текст
     возвращается as-is (модель забыла блок — рисуем без мотива).
 
-    Валидация ключей: каждое значение — строка длиной 8 < len < 200.
+    Валидация ключей: каждое значение — строка длиной 8 < len < 100.
+    Целевая длина по инструкции в _SCENE_BLOCK_INSTRUCTIONS — до 30
+    char, но даём запас до 100 на случай если Claude перебрал. Хвост
+    обрежется по бюджету Recraft (~28 char), но смысл сцены, скорее
+    всего, в первых словах — обрезка по пробелу не разрушит.
     """
     if not text or _SCENES_SEPARATOR not in text:
         return text, None
@@ -418,15 +425,17 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # картинку. Только абстрактные принципы.
 IMAGE_STYLE_BASE = """Wordless illustration, no text or letters anywhere.
 
-Hand-painted storybook illustration in the spirit of Kazuo Oga (Ghibli backgrounds) and Eastern European children's book art. Ink contour and watercolor-gouache on paper grain.
+Hand-painted children's storybook. VISIBLE watercolor washes, ink contour, gouache, paper grain, wet edges, color bleeds. NOT clean digital lineart, NOT polished graphic novel. Spirit of Kazuo Oga (Ghibli backgrounds).
 
-Visual generosity — small hidden treasures everywhere, tiny living things peeking from corners, miniature scenes on faraway planes. Rewards long looking.
+Visual generosity — small hidden treasures everywhere, tiny living things peeking from corners, miniature scenes on faraway planes.
 
-Time: evening or night, never midday. One dominant warm light source plus many tiny secondary lights. Multiple atmospheric depths, each populated with something living.
+Time: evening, dusk, or night, never midday. One dominant warm light source plus many tiny secondary lights. Multiple atmospheric depths, each populated with something living.
 
-The world is the protagonist, not the characters. If characters appear, they stay small within their setting, never portraits. Openly surreal — scales can defy logic, dreamlike anomalies in the everyday. Densely lived-in.
+The world is the protagonist, not the characters. Characters, if any, stay small in their setting, never portraits.
 
-Avoid: 3D render, anime style, character close-up, modern technology or clothing, generic AI illustration."""
+Openly surreal — scales can defy logic, dreamlike anomalies in the everyday.
+
+Avoid: small figures centered in wide landscape (manga composition), anime, 3D render, character close-up, modern technology or clothing."""
 
 # Раньше тут был «A child playing with their friend {hero} ...» — это
 # жёстко диктовало модели сцену и шло вразрез с «Compose the scene
