@@ -102,19 +102,23 @@ async def generate_cover(
     scene_hint = (scene_description or "").strip()
     if scene_hint:
         # Hint обрезаем по месту, чтобы общий промпт остался под лимитом
-        # Recraft (~950-980 char) и truncation в нижнем коде не пришлось
-        # резать середину стиля (Mood-абзац). Бюджет = лимит − стиль −
-        # wrap − suffix − запас. Берём самый узкий лимит (FAL Recraft 950)
-        # минус 40 на запас → max_total = 910.
-        wrap = "Story motif (optional): "
+        # Recraft (FAL Recraft 950, Direct 980). Берём 945 с запасом 5
+        # на лишний пробел/символ. Бюджет = лимит − стиль − wrap −
+        # suffix − \n\n.
+        wrap = "World: "
         suffix = no_text_suffix
-        budget = 910 - len(style_prompt) - len(wrap) - len(suffix) - 2  # \n\n
+        budget = 945 - len(style_prompt) - len(wrap) - len(suffix) - 2
         if budget < 30:
-            # стиль почти упёрся в лимит — мотив не влезет, рисуем без него
+            # Стиль почти упёрся в лимит — мотив не влезет, рисуем без него.
             prompt = f"{style_prompt}{suffix}"
         else:
             if len(scene_hint) > budget:
-                scene_hint = scene_hint[: budget - 1].rstrip() + "…"
+                # Обрезаем по последнему пробелу, чтобы не рвать слово.
+                cut = scene_hint[: budget - 1].rstrip()
+                space = cut.rfind(" ")
+                if space > budget * 0.6:  # есть разумный пробел в хвосте
+                    cut = cut[:space]
+                scene_hint = cut + "…"
             prompt = f"{style_prompt}\n\n{wrap}{scene_hint}{suffix}"
     else:
         prompt = f"{style_prompt}{no_text_suffix}"
