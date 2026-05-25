@@ -418,7 +418,7 @@ Hand-painted storybook illustration in the spirit of Kazuo Oga (Ghibli backgroun
 
 Visual generosity — small hidden treasures everywhere, tiny living things peeking from corners, miniature scenes on faraway planes. Rewards long looking.
 
-One dominant warm light source plus many tiny secondary lights. Multiple atmospheric depths, each populated with something living.
+Time: evening or night, never midday. One dominant warm light source plus many tiny secondary lights. Multiple atmospheric depths, each populated with something living.
 
 The world is the protagonist, not the characters. If characters appear, they stay small within their setting, never portraits. Openly surreal — scales can defy logic, dreamlike anomalies in the everyday. Densely lived-in.
 
