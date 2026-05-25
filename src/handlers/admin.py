@@ -973,3 +973,209 @@ async def cmd_reset_user(message: Message, command: CommandObject) -> None:
         f"Юзер может сгенерить сегодня ещё раз, ротация — с чистого листа.\n\n"
         f"Счётчики (bonus/pack/subscription) и /library — целы."
     )
+
+
+# ============================================================================
+# /admin  — справочник всех админских команд
+# ============================================================================
+
+@router.message(Command("admin"))
+async def cmd_admin_help(message: Message) -> None:
+    """Справочник всех админских команд бота."""
+    if not _is_admin(message.from_user.id):
+        return
+
+    text = (
+        "🔧 <b>Админские команды</b>\n\n"
+        "<b>📊 Аналитика</b>\n"
+        "<code>/stats</code> — мини-дашборд: юзеры, выручка, конверсии, источники\n"
+        "<code>/export_csv users|payments|commissions</code> — выгрузка CSV\n\n"
+        "<b>👤 Юзер: посмотреть и сбросить</b>\n"
+        "<code>/user_info TG_ID</code> — детали юзера (счётчики, сказки, подписка)\n"
+        "<code>/reset_user TG_ID</code> — сбросить daily-лимит и ротацию (счётчики целы)\n"
+        "<code>/clear_stories TG_ID</code> — удалить ВСЕ сказки юзера из /library\n"
+        "<code>/give_stories TG_ID [N]</code> — выдать N бонусных сказок\n\n"
+        "<b>💌 Обратная связь</b>\n"
+        "<code>/feedback</code> — последние 20 критик от юзеров\n"
+        "<code>/feedback all</code> — все критики\n"
+        "<code>/feedback TG_ID</code> — все от конкретного юзера\n\n"
+        "<b>🤝 Партнёрка</b>\n"
+        "<code>/partners</code> — список партнёров и pending-комиссии\n"
+        "<code>/partner_add CODE NAME ПРОЦЕНТ TG_ID</code> — создать партнёра\n"
+        "<code>/partner_stats CODE</code> — детали по партнёру\n"
+        "<code>/partner_link CODE</code> — deep-link для размещения\n"
+        "<code>/partner_payout CODE METHOD [REF]</code> — пометить pending как выплаченные\n"
+        "<code>/seed_partners</code> — посеять тестовых партнёров\n\n"
+        "<b>🎵 Фоновая музыка (legacy, музыку выпилили)</b>\n"
+        "<code>/generate_ambient N</code>, <code>/list_ambient</code>, <code>/clear_ambient</code> — "
+        "оставлены на случай возврата к озвучке. В новом flow PDF без музыки.\n\n"
+        "<i>Все команды видишь только ты (по списку ADMIN_IDS в .env). "
+        "Обычный юзер их не видит и не может выполнить.</i>"
+    )
+    await message.answer(text)
+
+
+# ============================================================================
+# /user_info TG_ID  — детали юзера
+# ============================================================================
+
+@router.message(Command("user_info"))
+async def cmd_user_info(message: Message, command: CommandObject) -> None:
+    """Показать детальное состояние юзера: счётчики, подписку, последние
+    сказки, ротацию архитектур и т.д. Полезно перед /reset_user или
+    /give_stories, чтобы понять что у него и в каком состоянии."""
+    if not _is_admin(message.from_user.id):
+        return
+
+    args = (command.args or "").strip()
+    if not args.isdigit():
+        await message.answer(
+            "Использование: <code>/user_info TG_ID</code>\n\n"
+            "Пример: <code>/user_info 1275991975</code>"
+        )
+        return
+
+    target_tg_id = int(args)
+
+    async with Session() as s:
+        u = (await s.execute(
+            select(User).where(User.telegram_id == target_tg_id)
+        )).scalar_one_or_none()
+        if not u:
+            await message.answer(
+                f"Юзер с tg_id <code>{target_tg_id}</code> не найден в БД."
+            )
+            return
+
+        # Последние 5 сказок
+        stories = (await s.execute(
+            select(Story.id, Story.child_name, Story.created_at)
+            .where(Story.user_id == u.id)
+            .order_by(desc(Story.created_at))
+            .limit(5)
+        )).all()
+
+        # Уникальные имена детей
+        names = (await s.execute(
+            select(Story.child_name, func.count(Story.id).label("cnt"))
+            .where(Story.user_id == u.id)
+            .group_by(Story.child_name)
+            .order_by(desc("cnt"))
+        )).all()
+
+    username = f"@{u.username}" if u.username else "(без юзернейма)"
+    sub_until = u.subscription_until.strftime("%d.%m.%Y") if u.subscription_until else "—"
+    last_at = u.last_story_at.strftime("%d.%m %H:%M") if u.last_story_at else "—"
+
+    lines = [
+        f"👤 <b>Юзер tg:<code>{u.telegram_id}</code></b>\n",
+        f"Username: {username}",
+        f"Имя: {u.first_name or '—'}",
+        f"Зарегистрирован: {u.created_at.strftime('%d.%m.%Y')}",
+        f"Последняя активность: {u.last_active_at.strftime('%d.%m %H:%M')}",
+        f"",
+        f"<b>Ребёнок (последний выбранный):</b>",
+        f"  Имя: {u.child_name or '—'}, возраст: {u.child_age or '—'}",
+        f"",
+        f"<b>Счётчики сказок:</b>",
+        f"  free_stories_used: {u.free_stories_used or 0} / лимит {config.free_story_limit}",
+        f"  bonus_stories: {u.bonus_stories or 0}",
+        f"  single_stories_remaining: {u.single_stories_remaining or 0}",
+        f"  pack_stories_remaining: {u.pack_stories_remaining or 0}",
+        f"  subscription: {u.subscription_status.value if u.subscription_status else '—'} до {sub_until}",
+        f"  last_story_at: {last_at}",
+        f"",
+        f"<b>Ротация / альтернация (последняя сказка):</b>",
+        f"  категория: {u.last_story_category or '—'}",
+        f"  группа: {u.last_story_group or '—'}",
+        f"  архитектура: {u.last_story_architecture or '—'}",
+        f"  регистр юмора: {u.last_story_humor_register or '—'}",
+    ]
+
+    if names:
+        lines.append("")
+        lines.append("<b>Дети (по сказкам):</b>")
+        for name, cnt in names:
+            lines.append(f"  {name}: {cnt} сказок")
+
+    if stories:
+        lines.append("")
+        lines.append("<b>Последние 5 сказок:</b>")
+        for sid, child, created in stories:
+            lines.append(f"  #{sid} · {child} · {created.strftime('%d.%m %H:%M')}")
+
+    await message.answer("\n".join(lines))
+
+
+# ============================================================================
+# /clear_stories TG_ID  — удалить ВСЕ сказки юзера
+# ============================================================================
+
+@router.message(Command("clear_stories"))
+async def cmd_clear_stories(message: Message, command: CommandObject) -> None:
+    """Удалить ВСЕ записи Story для юзера (история сказок в /library обнулится).
+
+    НЕ ТРОГАЕТ:
+      - сам User (имя ребёнка, счётчики, подписка)
+      - платежи
+      - партнёрские атрибуции
+
+    Это «полная очистка библиотеки». Бэкап делается автоматически в БД
+    (см. backup service, дамп каждые 6 часов).
+
+    Использование:
+      /clear_stories 1275991975
+    """
+    if not _is_admin(message.from_user.id):
+        return
+
+    args = (command.args or "").strip()
+    if not args.isdigit():
+        await message.answer(
+            "Использование: <code>/clear_stories TG_ID</code>\n\n"
+            "Удалит все сказки юзера из /library. Счётчики и подписка целы.\n"
+            "Бэкап БД делается автоматически каждые 6 часов."
+        )
+        return
+
+    target_tg_id = int(args)
+
+    async with Session() as s:
+        u = (await s.execute(
+            select(User).where(User.telegram_id == target_tg_id)
+        )).scalar_one_or_none()
+        if not u:
+            await message.answer(
+                f"Юзер с tg_id <code>{target_tg_id}</code> не найден."
+            )
+            return
+
+        count_q = select(func.count(Story.id)).where(Story.user_id == u.id)
+        count_before = (await s.execute(count_q)).scalar() or 0
+
+        if count_before == 0:
+            await message.answer(
+                f"У юзера {u.first_name or target_tg_id} нет сказок в БД. "
+                f"Очищать нечего."
+            )
+            return
+
+        # Удаляем все Story для этого юзера
+        from sqlalchemy import delete
+        await s.execute(delete(Story).where(Story.user_id == u.id))
+        await s.commit()
+
+        username = f"@{u.username}" if u.username else "(без юзернейма)"
+        child = u.child_name or "?"
+
+    logger.warning(
+        "Admin %s cleared %d stories for user tg=%s",
+        message.from_user.id, count_before, target_tg_id,
+    )
+
+    await message.answer(
+        f"✅ Удалил <b>{count_before}</b> сказок\n"
+        f"Юзер: {username} · tg:<code>{target_tg_id}</code>\n"
+        f"Ребёнок: {child}\n\n"
+        f"Счётчики, подписка и платежи целы. Бэкап БД лежит в /backups/."
+    )
