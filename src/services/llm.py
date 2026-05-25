@@ -31,6 +31,7 @@ from ..prompts import (
     SYSTEM_GIFT_STORYTELLER,
     THEME_CHOICES,
     build_story_user_message,
+    parse_scenes_block,
     parse_story_title,
     pick_storyteller_concept,
 )
@@ -265,8 +266,12 @@ async def generate_story(
     theme_key: str = "",
     length: str = "",
     previous_summary: str | None = None,
-) -> tuple[str, str | None]:
-    """Генерирует сказку. Возвращает (чистый текст, название).
+) -> tuple[str, str | None, dict[str, str] | None]:
+    """Генерирует сказку. Возвращает (чистый текст, название, сцены).
+
+    сцены = {"opening": "...", "climax": "...", "ending": "..."} или
+    None, если сказочник не выдал блок ---SCENES--- (тогда картинки
+    рисуются без мотива).
 
     Параметры сказки (form, humor, genre, opening, tone) выбирает БОТ
     через src/services/story_params.pick_params() ДО вызова этой
@@ -358,6 +363,21 @@ async def generate_story(
     if not text:
         raise RuntimeError("LLM вернул пустой ответ")
 
+    # Сначала отрезаем хвостовой блок ---SCENES--- (если сказочник его
+    # выдал). Делаем это ДО parse_story_title, чтобы JSON-блок не попал
+    # в текст для пользователя ни при каких обстоятельствах.
+    text, scenes = parse_scenes_block(text)
+    if scenes:
+        logger.info(
+            "Сказочник выдал scenes: opening=%dch, climax=%dch, ending=%dch",
+            len(scenes["opening"]), len(scenes["climax"]), len(scenes["ending"]),
+        )
+    else:
+        logger.warning(
+            "Сказочник НЕ выдал валидный блок ---SCENES--- — картинки "
+            "будут нарисованы без сюжетного мотива."
+        )
+
     # Парсим название первой строкой (с кавычками или без) и обрезаем.
     cleaned, title = parse_story_title(text)
     if title:
@@ -368,7 +388,7 @@ async def generate_story(
             "из THEME_CHOICES или генератор-заглушка."
         )
 
-    return _clean_story_text(cleaned), title
+    return _clean_story_text(cleaned), title, scenes
 
 
 async def generate_gift_story(

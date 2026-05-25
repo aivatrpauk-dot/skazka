@@ -606,7 +606,7 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     )
 
     try:
-        text, story_title = await generate_story(
+        text, story_title, scenes = await generate_story(
             child_name=data["child_name"],
             child_age=child_age_int,
             form=params.form,
@@ -661,7 +661,6 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # (оставлен для тестов / будущего возврата к озвучке).
     from ..prompts import THEME_CHOICES
     from ..services.image import generate_three_illustrations
-    from ..services.llm import extract_three_scenes
     from ..services.pdf_book import build_story_pdf
     from ..utils import accusative as _acc, genitive as _gen, hero_accusative as _hero_acc
 
@@ -687,20 +686,14 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     book_subtitle = title_phrase
 
     if not config.use_tts:
-        # ─── Параллельная подготовка: только 3 сцены LLM ───
-        # Фоновая музыка убрана — продукт чище и проще: один PDF без
-        # сопровождения, родитель сам читает в своём ритме.
-        await bot.send_chat_action(call.message.chat.id, "typing")
-        scenes_task = asyncio.create_task(extract_three_scenes(text))
-
-        # Получаем 3 сцены (или None если LLM не настроен)
-        scenes = None
-        try:
-            scenes = await scenes_task
-        except Exception as e:
-            logger.warning("extract_three_scenes failed: %s", e)
-
-        # 3 иллюстрации параллельно (FAL Recraft)
+        # ─── 3 иллюстрации ───
+        # Сцены приходят из generate_story (сказочник сам их выдал в
+        # блоке ---SCENES--- по нашей инструкции в _SCENE_BLOCK_INSTRUCTIONS).
+        # Раньше тут был отдельный вызов extract_three_scenes к Gemini —
+        # выключили: один API вместо двух, сказочник лучше знает мир,
+        # который только что написал. Если scenes=None (сказочник забыл
+        # блок или JSON битый) — generate_three_illustrations нарисует
+        # без сюжетного мотива, чисто по stage-промптам.
         await bot.send_chat_action(call.message.chat.id, "upload_photo")
         illustrations = await generate_three_illustrations(
             data["hero"], data["theme_key"], scenes=scenes,
