@@ -115,7 +115,14 @@ async def generate_cover(
             prompt = f"{style_prompt}\n\n{wrap}{scene_hint}{suffix}"
     else:
         prompt = f"{style_prompt}{no_text_suffix}"
-    logger.info("Image prompt assembled, %d chars", len(prompt))
+    # Логируем хвост prompt'а (последние 120 char) — там лежит scene hint
+    # после стиля. Помогает увидеть, что РЕАЛЬНО попадает в Recraft:
+    # одинаковый ли это хвост у трёх картинок (тогда они сольются) или
+    # каждый раз свой.
+    logger.info(
+        "Image prompt assembled, %d chars, tail: …%s",
+        len(prompt), prompt[-120:].replace("\n", " ⏎ "),
+    )
 
     out = _cache_path(prompt)
     if out.exists():

@@ -368,9 +368,18 @@ async def generate_story(
     # в текст для пользователя ни при каких обстоятельствах.
     text, scenes = parse_scenes_block(text)
     if scenes:
+        # Логируем фактическое содержимое — помогает диагностировать
+        # «три картинки одинаковые» (если сцены окажутся похожи или
+        # одинаковые → проблема в инструкции; если разные → проблема
+        # в Recraft / style_id).
         logger.info(
-            "Сказочник выдал scenes: opening=%dch, climax=%dch, ending=%dch",
-            len(scenes["opening"]), len(scenes["climax"]), len(scenes["ending"]),
+            "Сказочник выдал scenes:\n"
+            "  opening (%dch): %s\n"
+            "  climax  (%dch): %s\n"
+            "  ending  (%dch): %s",
+            len(scenes["opening"]), scenes["opening"],
+            len(scenes["climax"]),  scenes["climax"],
+            len(scenes["ending"]),  scenes["ending"],
         )
     else:
         logger.warning(
