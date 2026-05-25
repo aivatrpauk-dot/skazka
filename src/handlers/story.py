@@ -10,7 +10,7 @@ from pathlib import Path
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, Message
-from sqlalchemy import select, update
+from sqlalchemy import desc, select, update
 
 from ..config import config
 from ..db import Session, Story, SubscriptionStatus, User

@@ -36,7 +36,21 @@ FUSIONBRAIN_BASE = "https://api-key.fusionbrain.ai"
 
 
 def _cache_path(prompt: str) -> Path:
-    digest = hashlib.sha256(prompt.encode()).hexdigest()[:32]
+    """SHA256 от (prompt + параметры стиля). КРИТИЧНО: в ключ должны входить
+    ВСЕ параметры, которые реально меняют картинку. Иначе при смене пресета
+    в .env будет возвращаться старая закэшированная картинка с предыдущим
+    стилем — кэш переживает docker rebuild (bind-mount ./cache:/app/cache).
+
+    Раньше ключом был только prompt, и при смене RECRAFT_STYLE_PRESET картинки
+    не менялись — это был самый коварный баг иттерации над стилем.
+    """
+    cache_key = "||".join([
+        prompt,
+        str(config.image_model or ""),
+        str(config.recraft_style_id or ""),
+        str(config.recraft_style_preset or ""),
+    ])
+    digest = hashlib.sha256(cache_key.encode()).hexdigest()[:32]
     cache_dir = Path(config.image_cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"{digest}.png"
@@ -204,8 +218,12 @@ def _fal_endpoint_for_model(model: str) -> tuple[str, dict]:
             return "fal-ai/recraft-v3", {
                 "style_id": config.recraft_style_id,
             }
+        # FAL-обёртка принимает слитную строку «digital_illustration/hand_drawn»
+        # (в отличие от Direct API, который требует style+substyle раздельно).
+        # Берём пресет из .env — иначе RECRAFT_STYLE_PRESET, выставленный
+        # пользователем, не применится в FAL fallback пути.
         return "fal-ai/recraft-v3", {
-            "style": "digital_illustration/hand_drawn",
+            "style": config.recraft_style_preset or "digital_illustration/hand_drawn",
         }
     if m == "flux-pro-1.1":
         # https://fal.ai/models/fal-ai/flux-pro/v1.1
@@ -320,8 +338,22 @@ async def _generate_recraft_direct(prompt: str, out: Path) -> Path | None:
         "Authorization": f"Bearer {config.recraft_api_key}",
         "Content-Type": "application/json",
     }
+    # Recraft Direct API имеет ЖЁСТКИЙ лимит 1000 символов на prompt
+    # (возвращает 400 «prompt length should be in [1, 1000]»). Обрезаем
+    # тем же алгоритмом, что и FAL-путь: 55% начала (стиль) + 40% конца
+    # (сцена + запрет текста), склейка через "...". Сцена критичнее стиля.
+    max_prompt_chars = 980
+    safe_prompt = prompt
+    if len(prompt) > max_prompt_chars:
+        head_len = int(max_prompt_chars * 0.55)
+        tail_len = max_prompt_chars - head_len - 5
+        safe_prompt = prompt[:head_len] + " ... " + prompt[-tail_len:]
+        logger.info(
+            "Recraft direct: prompt обрезан с %d до %d символов",
+            len(prompt), len(safe_prompt),
+        )
     payload: dict[str, object] = {
-        "prompt": prompt,
+        "prompt": safe_prompt,
         "model": "recraftv3",
         "size": "1024x1024",
         "n": 1,
