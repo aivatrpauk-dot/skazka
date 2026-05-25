@@ -327,26 +327,28 @@ async def generate_story(
         # Первая сказка ИЛИ смена категории — подсказку не передаём.
         rotation_hint = ""
 
-    format_params = {
-        "child_name": child_name,
-        "child_age": child_age,
-        "rotation_hint": rotation_hint,
-    }
-    user_message = "Напиши сказку. Не забудь маркер архитектуры первой строкой."
-
-    # Подсказка гендера для CIS/татарских/кавказских имён (Амина, Айдар,
-    # Тимур, Айгуль и т.п.). LLM иногда ошибается в склонении нестандартных
-    # имён — например, «Амину» как родительный множественного от «амины»
-    # → «Амин». Если наш словарь знает гендер — явно скажем модели.
+    # Гендер-префикс для имени. Если наш словарь CIS-имён знает гендер
+    # (Амина, Айдар, Тимур, Айгуль), подставляем «девочки» или «мальчика»
+    # в первое же предложение промпта: «Напиши сказку для девочки по имени
+    # Амина, 5 лет». Модель сразу видит гендер из одного слова и склоняет
+    # имя правильно во всём тексте. Если гендер неизвестен (классические
+    # русские имена — Маша, Серёжа) — нейтральное «ребёнка», petrovich/
+    # pymorphy сами справятся.
     from ..utils import detect_name_gender as _detect_gender
     _gender_hint = _detect_gender(child_name)
     if _gender_hint is not None:
         from petrovich.enums import Gender as _G
-        _gender_text = "девочка" if _gender_hint == _G.FEMALE else "мальчик"
-        user_message += (
-            f" Важно: {child_name} — {_gender_text}. Склоняй имя правильно "
-            f"в каждом падеже."
-        )
+        _name_intro = "девочки" if _gender_hint == _G.FEMALE else "мальчика"
+    else:
+        _name_intro = "ребёнка"
+
+    format_params = {
+        "child_name": child_name,
+        "child_age": child_age,
+        "rotation_hint": rotation_hint,
+        "name_intro": _name_intro,
+    }
+    user_message = "Напиши сказку. Не забудь маркер архитектуры первой строкой."
 
     provider = config.llm_provider
     text = ""
