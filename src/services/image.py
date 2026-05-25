@@ -25,9 +25,8 @@ import httpx
 from ..config import config
 from ..prompts import (
     FALLBACK_SCENE_TEMPLATE,
+    IMAGE_STYLE_BASE,
     THEME_TO_EN,
-    random_image_style,
-    stage_style,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,64 +64,53 @@ async def generate_cover(
 ) -> Path | None:
     """Генерирует иллюстрацию для PDF-книжки.
 
-    scene_description — одно предложение по-английски из конкретной сцены сказки.
-    stage — 'opening' | 'climax' | 'ending' для выбора stage-специфичного стиля.
-            Если None — случайный стиль (legacy/одиночный вызов).
+    scene_description — одно английское предложение от сказочника-Claude,
+    описывающее одну из трёх параллельных сцен мира сказки.
+    stage — legacy, больше не используется (раньше выбирал stage-
+            специфичный промпт; теперь у нас единая стилевая константа
+            IMAGE_STYLE_BASE для всех картинок). Оставлен в сигнатуре
+            ради backward-compat вызовов.
     """
-    # theme_en больше не используется в промпте — новые stage-промпты
-    # просят модель композировать сцену свободно, а не «по теме». Тема
-    # остаётся только в подсказке Gemini для extract_three_scenes.
-    _ = THEME_TO_EN.get(theme_key, "kindness and warmth")
+    _ = THEME_TO_EN.get(theme_key, "kindness and warmth")  # legacy theme
+    _ = stage  # больше не используется
 
-    # Stage-specific стиль (opening/climax/ending) или случайный для legacy.
-    if stage:
-        style_id, style_prompt = stage_style(stage)
-    else:
-        style_id, style_prompt = random_image_style()
+    style_prompt = IMAGE_STYLE_BASE
 
     # Жёстко запрещаем любой текст на картинке. Recraft v3 особенно склонен
     # дорисовывать заголовки/имена/«The End» (он натренирован на book covers).
-    # Опытным путём: запрет работает лучше В НАЧАЛЕ и В КОНЦЕ промпта
-    # (модель сильнее весит первые/последние слова). Плюс negative prompt
-    # для Flux-моделей (см. _generate_fal).
-    #
-    # Новые stage-промпты в prompts.py УЖЕ начинаются с «Wordless
-    # illustration, no text or letters anywhere.» — поэтому отдельный
-    # no_text_prefix снят (был бы дублированием и съедал ~90 chars
-    # из жёсткого 980-charlimit'а Recraft). Оставляем только короткий
-    # суффикс в самом конце для повторной фиксации.
+    # IMAGE_STYLE_BASE уже начинается с «Wordless illustration, no text…»,
+    # поэтому отдельный prefix не нужен. Suffix в конце — повторная
+    # фиксация для модели, которая сильнее весит начало и конец.
     no_text_suffix = " // wordless, no text."
 
-    # Сборка промпта. Раньше было жёсткое «Scene to depict: <сцена>» — это
-    # командовало модели нарисовать именно эту сцену из сказки. Новая
-    # философия (см. prompts.py, IMAGE_STAGE_*): модель композирует
-    # свободно, а сцена из сказки идёт как мягкий мотив-подсказка. Если
-    # сцены нет (Gemini не отдал) — мотив вообще не добавляется, и
-    # модель работает только по стадии.
+    # Сцена-описание идёт как «World: <сцена>» после стиля. Это контекст
+    # того, что в мире происходит — не команда «нарисуй именно это».
+    # Композицию выбирает Recraft, опираясь на IMAGE_STYLE_BASE
+    # («world is the protagonist», «characters small not portraits»,
+    # «visual generosity»). Если сцены нет — рисуем чисто по стилю.
     scene_hint = (scene_description or "").strip()
     if scene_hint:
-        # Hint обрезаем по месту, чтобы общий промпт остался под лимитом
-        # Recraft (FAL Recraft 950, Direct 980). Берём 945 с запасом 5
-        # на лишний пробел/символ. Бюджет = лимит − стиль − wrap −
-        # suffix − \n\n.
+        # Обрезаем по бюджету, чтобы итог остался под лимитом Recraft
+        # Direct (980, наш primary с RECRAFT_STYLE_ID). Берём 975 с запасом 5.
+        # Если упадём на FAL fallback (950) — его собственный truncate
+        # отрежет хвост по splice, переживёт.
         wrap = "World: "
         suffix = no_text_suffix
-        budget = 945 - len(style_prompt) - len(wrap) - len(suffix) - 2
+        budget = 975 - len(style_prompt) - len(wrap) - len(suffix) - 2
         if budget < 30:
-            # Стиль почти упёрся в лимит — мотив не влезет, рисуем без него.
             prompt = f"{style_prompt}{suffix}"
         else:
             if len(scene_hint) > budget:
                 # Обрезаем по последнему пробелу, чтобы не рвать слово.
                 cut = scene_hint[: budget - 1].rstrip()
                 space = cut.rfind(" ")
-                if space > budget * 0.6:  # есть разумный пробел в хвосте
+                if space > budget * 0.6:
                     cut = cut[:space]
                 scene_hint = cut + "…"
             prompt = f"{style_prompt}\n\n{wrap}{scene_hint}{suffix}"
     else:
         prompt = f"{style_prompt}{no_text_suffix}"
-    logger.info("Image style chosen: %s", style_id)
+    logger.info("Image prompt assembled, %d chars", len(prompt))
 
     out = _cache_path(prompt)
     if out.exists():

@@ -121,8 +121,11 @@ _SCENE_BLOCK_INSTRUCTIONS = """
 ТИП 4. Сцена в совсем другом месте того же мира.
 ТИП 5. Сцена с явлением, не с персонажем.
 
-ПРАВИЛО: три фазы — ТРИ РАЗНЫХ ТИПА. Повторять тип между фазами одной
-сказки запрещено.
+ПРАВИЛО: три фазы — ТРИ СОВЕРШЕННО РАЗНЫЕ СЦЕНЫ. Разные по всем осям
+сразу: разные МЕСТА, разные ПЕРСОНАЖИ, разные СОБЫТИЯ, разные МАСШТАБЫ
+(не все три камерные и не все три просторные). Сцены могут вообще не
+пересекаться по содержанию — их объединяет только то, что они в одной
+вселенной сказки. Повторять ТИП сцены между фазами тоже запрещено.
 
 ТРИ ФАЗЫ:
 — "opening" — что в мире сказки происходит до того, как с героем
@@ -385,97 +388,41 @@ HERO_QUICK_PICKS: dict[str, str] = {
 
 
 # ────────────────────────────────────────────────────────────────
-# Иллюстрации (Recraft + Gemini scene extraction)
+# Иллюстрации — единая стилевая константа для Recraft
 # ────────────────────────────────────────────────────────────────
 #
-# Главная философия: «волшебный мир ГЛАЗАМИ ребёнка», нарисованный
-# профессиональным иллюстратором детских книг. Не «как дошкольник
-# рисует мелками» — а как ребёнок ВИДИТ магию: летающие домики,
-# кошки с крыльями, луна в ночной шапочке, светящиеся окна.
+# Раньше было три stage-промпта (OPENING/CLIMAX/ENDING) с микро-разницей
+# в Mood. Это давало одинаковый стиль и удваивало код на ровном месте —
+# вариация между картинками идёт от scene_description (Claude), а не от
+# stage-промпта. Поэтому теперь — одна универсальная константа на все
+# три картинки. Stage больше не нужен.
 #
-# Жёсткий лимит длины — каждый stage-промпт ≤ 550 символов, чтобы в
-# Recraft v3 (лимит 1000 chars) промпт целиком вместе с no_text-guard
-# (~108 chars) и scene description (≤280 chars) влез БЕЗ обрезки.
+# Главные принципы константы (из продуктовой спеки):
+# — «Visual generosity»: плотный мир, маленькие сокровища в углах,
+#   награда за долгий взгляд.
+# — «The world is the protagonist, not the characters»: герои если есть
+#   — не портреты, а часть мира. Эту проблему ловили на практике
+#   (двое детей крупным планом без сюра).
+# — Openly surreal: масштаб и пропорции могут нарушать логику.
+# — Несколько источников света — один доминирующий тёплый + множество
+#   маленьких вторичных.
+# — Anti-list в конце: то, чего категорически быть не должно (3D, аниме,
+#   крупный план персонажа, пустой фон, generic AI).
+#
+# Жёстко избегаем КОНКРЕТНЫХ what-to-draw примеров (никаких «fireflies,
+# moons, lanterns, mushrooms») — Recraft буквально натычет их в каждую
+# картинку. Только абстрактные принципы.
+IMAGE_STYLE_BASE = """Wordless illustration, no text or letters anywhere.
 
-# Три стадии — три самостоятельных промпта. Раньше была общая «ДНК»
-# (_IMAGE_DNA) + палитра на стадию; новая философия: каждый промпт
-# самодостаточен, палитру модель выбирает сама. Сцена из сказки
-# подмешивается мягко — см. image.py, склейка через
-# «Optional motif from the story (use only if it fits): …», а не
-# жёсткое «Scene to depict: …». Это соответствует «Compose the scene
-# freely» внутри каждого промпта — модель композирует, а сюжетный мотив
-# просто намекает, что у мира с этой картинкой общая ДНК со сказкой.
+Hand-painted storybook illustration in the spirit of Kazuo Oga (Ghibli backgrounds) and Eastern European children's book art. Ink contour and watercolor-gouache on paper grain.
 
-# 🥇 OPENING — первая иллюстрация книги. Уют до волшебства.
-IMAGE_STAGE_OPENING = """Wordless illustration, no text or letters anywhere.
+Visual generosity — small hidden treasures everywhere, tiny living things peeking from corners, miniature scenes on faraway planes. Rewards long looking.
 
-Hand-painted storybook illustration. Spirit of Ghibli backgrounds and classic Eastern European children's book art. Ink contour and watercolor-gouache textures on paper grain. Warm directed light from a single source, cozy chiaroscuro. Three layered depths.
+One dominant warm light source plus many tiny secondary lights. Multiple atmospheric depths, each populated with something living.
 
-Mood: cozy evening before something magical happens. Warm, hushed, inviting. The kind of place where a story is about to begin.
+The world is the protagonist, not the characters. If characters appear, they stay small within their setting, never portraits. Openly surreal — scales can defy logic, dreamlike anomalies in the everyday. Densely lived-in.
 
-Openly surreal — scales can defy logic, dreamlike anomalies woven into the everyday world. Densely lived-in, small wonders everywhere.
-
-Avoid: 3D render, glossy digital painting, anime style, modern technology or clothing."""
-
-# 🥈 CLIMAX — сердце волшебства.
-IMAGE_STAGE_CLIMAX = """Wordless illustration, no text or letters anywhere.
-
-Hand-painted storybook illustration. Spirit of Ghibli backgrounds and classic Eastern European children's book art. Ink contour and watercolor-gouache textures on paper grain. Warm directed light from a single source, cozy chiaroscuro. Three layered depths.
-
-Mood: the magical heart of the world. Something extraordinary is happening or being revealed. Wonder, gentle strangeness, quiet awe.
-
-Openly surreal — scales can defy logic, dreamlike anomalies woven into the everyday world. Densely lived-in, small wonders everywhere.
-
-Compose the scene freely — invent the magic yourself, choose its kind, setting, palette, light source, inhabitants. Living creatures and magical beings are welcome but not required.
-
-Avoid: 3D render, glossy digital painting, anime style, modern technology or clothing."""
-
-# 🥉 ENDING — мир засыпает.
-IMAGE_STAGE_ENDING = """Wordless illustration, no text or letters anywhere.
-
-Hand-painted storybook illustration. Spirit of Ghibli backgrounds and classic Eastern European children's book art. Ink contour and watercolor-gouache textures on paper grain. Warm directed light from a single source, cozy chiaroscuro. Three layered depths.
-
-Mood: the world is going to sleep. Tender quiet, soft darkness that feels safe, the last warmth of the day or the first warmth of the night.
-
-Openly surreal — scales can defy logic, dreamlike anomalies woven into the everyday world. Densely lived-in but at rest, small wonders everywhere.
-
-Compose the scene freely — choose your own setting, time, palette, inhabitants. Living creatures sleeping or quietly settling are welcome but not required.
-
-Avoid: 3D render, glossy digital painting, anime style, modern technology or clothing."""
-
-
-def stage_style(stage: str) -> tuple[str, str]:
-    """Возвращает (style_id, style_prompt) для конкретного этапа сказки.
-
-    stage = 'opening' | 'climax' | 'ending' | (anything else → opening fallback)
-    """
-    mapping = {
-        "opening": ("magical_opening", IMAGE_STAGE_OPENING),
-        "climax": ("magical_climax", IMAGE_STAGE_CLIMAX),
-        "ending": ("magical_ending", IMAGE_STAGE_ENDING),
-    }
-    return mapping.get(stage, mapping["opening"])
-
-
-# Legacy alias — для одиночного generate_cover() без stage.
-IMAGE_STYLES: tuple[tuple[str, str], ...] = (
-    ("magical_opening", IMAGE_STAGE_OPENING),
-    ("magical_climax", IMAGE_STAGE_CLIMAX),
-    ("magical_ending", IMAGE_STAGE_ENDING),
-)
-
-
-def random_image_style() -> tuple[str, str]:
-    """Случайно выбирает стиль (для legacy кода — generate_cover без stage)."""
-    import random as _random
-    return _random.choice(IMAGE_STYLES)
-
-
-IMAGE_STYLE_PROMPT = IMAGE_STYLES[0][1]  # legacy alias
-IMAGE_PROMPT_TEMPLATE = (
-    IMAGE_STYLE_PROMPT
-    + " Optional motif from the story (use only if it fits): {scene_description}"
-)
+Avoid: 3D render, anime style, character close-up, modern technology or clothing, generic AI illustration."""
 
 # Раньше тут был «A child playing with their friend {hero} ...» — это
 # жёстко диктовало модели сцену и шло вразрез с «Compose the scene
