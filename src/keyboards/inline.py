@@ -55,12 +55,12 @@ def name_choice_kb(
     for name in names[:5]:
         if name in used_today:
             kb.button(
-                text=f"🌙 {name}",
+                text=f"🌙 {name} спит.",
                 callback_data=f"name:done:{name}",
             )
         else:
             kb.button(
-                text=f"🕯 {name} · ждёт сказку",
+                text=f"🕯 {name} ждёт сказку.",
                 callback_data=f"name:pick:{name}",
             )
     kb.button(text="✏️ Другое имя", callback_data="name:new")
