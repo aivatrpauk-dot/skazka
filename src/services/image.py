@@ -69,9 +69,10 @@ async def generate_cover(
     stage — 'opening' | 'climax' | 'ending' для выбора stage-специфичного стиля.
             Если None — случайный стиль (legacy/одиночный вызов).
     """
-    theme_en = THEME_TO_EN.get(theme_key, "kindness and warmth")
-    if not scene_description:
-        scene_description = FALLBACK_SCENE_TEMPLATE.format(hero=hero, theme_en=theme_en)
+    # theme_en больше не используется в промпте — новые stage-промпты
+    # просят модель композировать сцену свободно, а не «по теме». Тема
+    # остаётся только в подсказке Gemini для extract_three_scenes.
+    _ = THEME_TO_EN.get(theme_key, "kindness and warmth")
 
     # Stage-specific стиль (opening/climax/ending) или случайный для legacy.
     if stage:
@@ -81,23 +82,42 @@ async def generate_cover(
 
     # Жёстко запрещаем любой текст на картинке. Recraft v3 особенно склонен
     # дорисовывать заголовки/имена/«The End» (он натренирован на book covers).
-    # Опытным путём: запрет работает лучше в САМОМ НАЧАЛЕ промпта (модель
-    # сильнее весит первые слова), а не в конце. Плюс negative prompt для
-    # Flux-моделей (см. _generate_fal).
-    no_text_prefix = (
-        "ABSOLUTELY NO TEXT, no letters, no words, no titles, no signatures, "
-        "no watermarks anywhere. Pure wordless illustration. "
-    )
-    # Короткий дублирующий тег в самом конце — модели attend сильнее к началу
-    # и концу строки. Короткий, чтобы не вытеснить scene description при
-    # обрезке до 950 chars (логика truncation ниже сохраняет первые 55% и
-    # последние 40%). Recraft v3 натренирован на book covers и любит
-    # дорисовывать названия — повтор в двух местах помогает заметно.
-    no_text_suffix = " // wordless image, no text, no letters."
-    prompt = (
-        f"{no_text_prefix}{style_prompt} Scene to depict: "
-        f"{scene_description}{no_text_suffix}"
-    )
+    # Опытным путём: запрет работает лучше В НАЧАЛЕ и В КОНЦЕ промпта
+    # (модель сильнее весит первые/последние слова). Плюс negative prompt
+    # для Flux-моделей (см. _generate_fal).
+    #
+    # Новые stage-промпты в prompts.py УЖЕ начинаются с «Wordless
+    # illustration, no text or letters anywhere.» — поэтому отдельный
+    # no_text_prefix снят (был бы дублированием и съедал ~90 chars
+    # из жёсткого 980-charlimit'а Recraft). Оставляем только короткий
+    # суффикс в самом конце для повторной фиксации.
+    no_text_suffix = " // wordless, no text."
+
+    # Сборка промпта. Раньше было жёсткое «Scene to depict: <сцена>» — это
+    # командовало модели нарисовать именно эту сцену из сказки. Новая
+    # философия (см. prompts.py, IMAGE_STAGE_*): модель композирует
+    # свободно, а сцена из сказки идёт как мягкий мотив-подсказка. Если
+    # сцены нет (Gemini не отдал) — мотив вообще не добавляется, и
+    # модель работает только по стадии.
+    scene_hint = (scene_description or "").strip()
+    if scene_hint:
+        # Hint обрезаем по месту, чтобы общий промпт остался под лимитом
+        # Recraft (~950-980 char) и truncation в нижнем коде не пришлось
+        # резать середину стиля (Mood-абзац). Бюджет = лимит − стиль −
+        # wrap − suffix − запас. Берём самый узкий лимит (FAL Recraft 950)
+        # минус 40 на запас → max_total = 910.
+        wrap = "Story motif (optional): "
+        suffix = no_text_suffix
+        budget = 910 - len(style_prompt) - len(wrap) - len(suffix) - 2  # \n\n
+        if budget < 30:
+            # стиль почти упёрся в лимит — мотив не влезет, рисуем без него
+            prompt = f"{style_prompt}{suffix}"
+        else:
+            if len(scene_hint) > budget:
+                scene_hint = scene_hint[: budget - 1].rstrip() + "…"
+            prompt = f"{style_prompt}\n\n{wrap}{scene_hint}{suffix}"
+    else:
+        prompt = f"{style_prompt}{no_text_suffix}"
     logger.info("Image style chosen: %s", style_id)
 
     out = _cache_path(prompt)
@@ -218,12 +238,16 @@ def _fal_endpoint_for_model(model: str) -> tuple[str, dict]:
             return "fal-ai/recraft-v3", {
                 "style_id": config.recraft_style_id,
             }
-        # FAL-обёртка принимает слитную строку «digital_illustration/hand_drawn»
-        # (в отличие от Direct API, который требует style+substyle раздельно).
-        # Берём пресет из .env — иначе RECRAFT_STYLE_PRESET, выставленный
-        # пользователем, не применится в FAL fallback пути.
+        # ВАЖНО: FAL-обёртка для recraft-v3 принимает ТОЛЬКО верхний уровень
+        # style ("any", "realistic_image", "digital_illustration",
+        # "vector_illustration"). Substyle (например, "hand_drawn") FAL НЕ
+        # поддерживает — он только в Recraft Direct API. Раньше тут стоял
+        # слитный "digital_illustration/hand_drawn", и FAL валился с 422 как
+        # только Recraft Direct падал. Теперь срезаем substyle до слэша.
+        preset = config.recraft_style_preset or "digital_illustration/hand_drawn"
+        top_style = preset.split("/", 1)[0] if "/" in preset else preset
         return "fal-ai/recraft-v3", {
-            "style": config.recraft_style_preset or "digital_illustration/hand_drawn",
+            "style": top_style,
         }
     if m == "flux-pro-1.1":
         # https://fal.ai/models/fal-ai/flux-pro/v1.1
@@ -355,6 +379,10 @@ async def _generate_recraft_direct(prompt: str, out: Path) -> Path | None:
     payload: dict[str, object] = {
         "prompt": safe_prompt,
         "model": "recraftv3",
+        # Квадрат 1024x1024 — самый предсказуемый размер для Recraft v3,
+        # без растяжения. Раньше тут было 1024x1536 (2:3 портрет), но это
+        # «вытягивало» картинку. Квадрат хорошо смотрится в Telegram
+        # превью и аккуратно ложится в PDF.
         "size": "1024x1024",
         "n": 1,
         "response_format": "url",
@@ -439,7 +467,10 @@ async def _generate_fal(prompt: str, out: Path) -> Path | None:
     # Для квадратной обложки 1024x1024 — square_hd подходит для всех моделей.
     base_payload = {
         "prompt": safe_prompt,
-        "image_size": "square_hd",
+        # Квадрат 1024x1024 — без растяжения. Раньше было {1024,1536}
+        # (2:3 портрет), но это «вытягивало» картинку. FAL принимает
+        # explicit {width,height} для recraft-v3 и Flux одинаково.
+        "image_size": {"width": 1024, "height": 1024},
         "num_images": 1,
     }
 

@@ -284,40 +284,43 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # Recraft v3 (лимит 1000 chars) промпт целиком вместе с no_text-guard
 # (~108 chars) и scene description (≤280 chars) влез БЕЗ обрезки.
 
-# Стилевая ДНК — соответствует части 4 спеки («Целевая эстетика»).
-# При активном RECRAFT_STYLE_ID натренированный стиль несёт технику
-# (ink contour + watercolor+gouache), а текст работает как guardrails.
-_IMAGE_DNA = (
-    "Hand-painted storybook illustration, spirit of Ghibli backgrounds "
-    "(Kazuo Oga) and Soviet animation 70s-80s. Ink contour, watercolor "
-    "and gouache on paper grain. Three layered depths, one warm "
-    "directed light source, cozy chiaroscuro. Openly surreal: oversized "
-    "moons, lavender mountains, turquoise dusk. Densely lived-in, small "
-    "wonders in every corner. No characters or only a tiny silhouette. "
-    "No modern clothing or tech. Never 3D, Pixar, anime, glossy, "
-    "airbrushed."
-)
+# Три стадии — три самостоятельных промпта. Раньше была общая «ДНК»
+# (_IMAGE_DNA) + палитра на стадию; новая философия: каждый промпт
+# самодостаточен, палитру модель выбирает сама. Сцена из сказки
+# подмешивается мягко — см. image.py, склейка через
+# «Optional motif from the story (use only if it fits): …», а не
+# жёсткое «Scene to depict: …». Это соответствует «Compose the scene
+# freely» внутри каждого промпта — модель композирует, а сюжетный мотив
+# просто намекает, что у мира с этой картинкой общая ДНК со сказкой.
 
-# 🥇 OPENING — первая иллюстрация книги.
-IMAGE_STAGE_OPENING = (
-    _IMAGE_DNA +
-    " Palette: deep night indigo with warm honey-golden accents, soft "
-    "pinks, lavender."
-)
+# 🥇 OPENING — первая иллюстрация книги. Уют до волшебства.
+IMAGE_STAGE_OPENING = """Wordless illustration, no text or letters anywhere.
+Hand-painted storybook illustration. Spirit of Ghibli backgrounds and classic Eastern European children's book art. Ink contour and watercolor-gouache textures on paper grain. Warm directed light from a single source, cozy chiaroscuro. Three layered depths.
+Mood: cozy evening before something magical happens. Warm, hushed, inviting. The kind of place where a story is about to begin. Slightly surreal, openly conventional, gently magical. Densely lived-in, full of small wonders to discover.
+Compose the scene freely — choose your own location, objects, light source, color palette, time of day within the evening hours. Living creatures are welcome (small animals, tiny silhouettes, magical inhabitants) but not required.
+Avoid: 3D render, glossy digital painting, anime style, modern technology or clothing."""
 
-# 🥈 CLIMAX — пик приключения.
-IMAGE_STAGE_CLIMAX = (
-    _IMAGE_DNA +
-    " Palette: deep purple-indigo, glowing golden and rose accents, "
-    "emerald and teal."
-)
+# 🥈 CLIMAX — сердце волшебства.
+IMAGE_STAGE_CLIMAX = """Wordless illustration, no text or letters anywhere.
 
-# 🥉 ENDING — финал.
-IMAGE_STAGE_ENDING = (
-    _IMAGE_DNA +
-    " Palette: dreamy night pastels — dusty lavender, soft cream, "
-    "gentle teal, warm moonlight."
-)
+Hand-painted storybook illustration. Spirit of Ghibli backgrounds and classic Eastern European children's book art. Ink contour and watercolor-gouache textures on paper grain. Warm directed light from a single source, cozy chiaroscuro. Three layered depths.
+
+Mood: the magical heart of the world. Something extraordinary is happening or being revealed. Wonder, gentle strangeness, quiet awe. Slightly surreal, openly conventional. Densely lived-in.
+
+Compose the scene freely — invent the magic yourself, choose its kind, setting, palette, light source, inhabitants. Living creatures and magical beings are welcome but not required.
+
+Avoid: 3D render, glossy digital painting, anime style, modern technology or clothing."""
+
+# 🥉 ENDING — мир засыпает.
+IMAGE_STAGE_ENDING = """Wordless illustration, no text or letters anywhere.
+
+Hand-painted storybook illustration. Spirit of Ghibli backgrounds and classic Eastern European children's book art. Ink contour and watercolor-gouache textures on paper grain. Warm directed light from a single source, cozy chiaroscuro. Three layered depths.
+
+Mood: the world is going to sleep. Tender quiet, soft darkness that feels safe, the last warmth of the day or the first warmth of the night. Slightly surreal, gently magical. Densely lived-in but at rest.
+
+Compose the scene freely — choose your own setting, time, palette, inhabitants. Living creatures sleeping or quietly settling are welcome but not required.
+
+Avoid: 3D render, glossy digital painting, anime style, modern technology or clothing."""
 
 
 def stage_style(stage: str) -> tuple[str, str]:
@@ -348,12 +351,17 @@ def random_image_style() -> tuple[str, str]:
 
 
 IMAGE_STYLE_PROMPT = IMAGE_STYLES[0][1]  # legacy alias
-IMAGE_PROMPT_TEMPLATE = IMAGE_STYLE_PROMPT + " Scene to depict: {scene_description}"
-
-FALLBACK_SCENE_TEMPLATE = (
-    "A child playing with their friend {hero} in a magical cozy room. "
-    "Theme: {theme_en}."
+IMAGE_PROMPT_TEMPLATE = (
+    IMAGE_STYLE_PROMPT
+    + " Optional motif from the story (use only if it fits): {scene_description}"
 )
+
+# Раньше тут был «A child playing with their friend {hero} ...» — это
+# жёстко диктовало модели сцену и шло вразрез с «Compose the scene
+# freely» внутри новых stage-промптов. Если Gemini не извлёк сцены —
+# просто отдаём пустую строку, и склейка в image.py не добавит мотив:
+# модель сочинит сцену сама.
+FALLBACK_SCENE_TEMPLATE = ""
 
 THEME_TO_EN = {
     "courage": "courage and bravery",
