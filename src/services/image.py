@@ -89,7 +89,7 @@ async def generate_cover(
     scene_hint = (scene_description or "").strip()
     if scene_hint:
         # Бюджет: 975 (под Recraft Direct 980 с запасом 5) − стиль − wrap − \n\n.
-        wrap = "Сцена: "
+        wrap = "Scene: "
         budget = 975 - len(style_prompt) - len(wrap) - 2
         if budget < 5:
             # Стиль почти упёрся в лимит — мотив не влезет.

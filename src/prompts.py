@@ -423,7 +423,13 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # Жёстко избегаем КОНКРЕТНЫХ what-to-draw примеров (никаких «fireflies,
 # moons, lanterns, mushrooms») — Recraft буквально натычет их в каждую
 # картинку. Только абстрактные принципы.
-IMAGE_STYLE_BASE = """Ты самый крутой художник и иллюстратор который компилирует и знает все стили всех именитых легендарных художников детских сказок. Юрий Васнецов, Владимир Сутеев, Май Митурич, Леонид Владимирский, Виктор Чижиков, Михаил Майофис, Геннадий Калиновский, Евгений Чарушин, Фёдор Хитрук, Роман Давыдов, Иван Иванов-Вано, Кадзуо Ога (фоны Ghibli), Зденек Милер, Беатрикс Поттер, Морис Сендак, Эрик Карл, Иван Билибин, Olya Luki. нарисуй мне иллюстрацию к картинке с богатым внутренним миром, которую хочется разглядывать и показывать другим от мала до велика. С легким уютным летним сказочным вайбом, которая будет олицетворять собой ночной или вечерний мир сказочных приключений. Эта картинка сама нелогичность, асимметричность, и все что так любят дети, и к чему не привыкли взрослые. Она несет в себе подлинность, тот тихий антураж, когда бабушки рассказывают и слагают легенды тихими вечерами у костра для своих потомков."""
+IMAGE_STYLE_BASE = """You are a master illustrator of children's books, blending styles of Yuri Vasnetsov, Vladimir Suteev, May Miturich, Yevgeny Charushin, Kazuo Oga (Ghibli backgrounds), Beatrix Potter, Maurice Sendak, Ivan Bilibin.
+
+Rich inner life, rewards long looking. Cozy summer fairy-tale vibe, nocturnal or evening world of magical adventures. Illogic and asymmetry itself — the kind children love and adults are unused to. The quiet authenticity of grandmothers weaving legends by the fire.
+
+Palette: deep night and twilight — blue, purple, indigo, plum, lilac, turquoise. A true night world, not a golden evening. No yellow-green daytime tones. One warm accent allowed, never dominant.
+
+Technique: hand-painted book illustration — watercolor and gouache, visible brush, living contour, paper texture. The world is the protagonist, not character faces. No modern setting, no 3D smoothness, no anime."""
 
 # Раньше тут был «A child playing with their friend {hero} ...» — это
 # жёстко диктовало модели сцену и шло вразрез с «Compose the scene
