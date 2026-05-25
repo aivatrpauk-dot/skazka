@@ -45,17 +45,24 @@ def name_choice_kb(
     used_today = used_today or set()
     kb = InlineKeyboardBuilder()
     # До 5 последних имён в кнопках (больше не помещается в чате).
+    # Маркеры на состоянии ребёнка:
+    #  🌙 {имя} — сказка на сегодня уже есть, ребёнок «спит». При клике
+    #             handler покажет alert (callback_data="name:done:…").
+    #  🕯 {имя} · ждёт сказку — ещё не было сказки сегодня. Клик ведёт
+    #             в визард (callback_data="name:pick:…").
+    # Раньше было «✅ {имя} (сегодня уже была)» — звучало как упрёк
+    # родителю. Луна+свеча работают красивее и в духе вечернего ритуала.
     for name in names[:5]:
         if name in used_today:
-            # Префикс «✅» = «для этого ребёнка сегодня уже была сказка».
-            # callback_data другой — обрабатывается отдельным handler'ом,
-            # который покажет alert вместо запуска визарда.
             kb.button(
-                text=f"✅ {name} (сегодня уже была)",
+                text=f"🌙 {name}",
                 callback_data=f"name:done:{name}",
             )
         else:
-            kb.button(text=f"👤 {name}", callback_data=f"name:pick:{name}")
+            kb.button(
+                text=f"🕯 {name} · ждёт сказку",
+                callback_data=f"name:pick:{name}",
+            )
     kb.button(text="✏️ Другое имя", callback_data="name:new")
     kb.button(text="◀ В меню", callback_data="story:cancel")
     kb.adjust(1)
