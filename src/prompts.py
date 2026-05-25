@@ -411,7 +411,9 @@ IMAGE_STAGE_OPENING = """Wordless illustration, no text or letters anywhere.
 
 Hand-painted storybook illustration. Spirit of Ghibli backgrounds and classic Eastern European children's book art. Ink contour and watercolor-gouache textures on paper grain. Warm directed light from a single source, cozy chiaroscuro. Three layered depths.
 
-Mood: cozy evening before something magical happens. Warm, hushed, inviting. The kind of place where a story is about to begin. Slightly surreal, openly conventional, gently magical. Densely lived-in, full of small wonders to discover.
+Mood: cozy evening before something magical happens. Warm, hushed, inviting. The kind of place where a story is about to begin.
+
+Openly surreal — scales can defy logic, dreamlike anomalies woven into the everyday world. Densely lived-in, small wonders everywhere.
 
 Avoid: 3D render, glossy digital painting, anime style, modern technology or clothing."""
 
@@ -420,7 +422,9 @@ IMAGE_STAGE_CLIMAX = """Wordless illustration, no text or letters anywhere.
 
 Hand-painted storybook illustration. Spirit of Ghibli backgrounds and classic Eastern European children's book art. Ink contour and watercolor-gouache textures on paper grain. Warm directed light from a single source, cozy chiaroscuro. Three layered depths.
 
-Mood: the magical heart of the world. Something extraordinary is happening or being revealed. Wonder, gentle strangeness, quiet awe. Slightly surreal, openly conventional. Densely lived-in.
+Mood: the magical heart of the world. Something extraordinary is happening or being revealed. Wonder, gentle strangeness, quiet awe.
+
+Openly surreal — scales can defy logic, dreamlike anomalies woven into the everyday world. Densely lived-in, small wonders everywhere.
 
 Compose the scene freely — invent the magic yourself, choose its kind, setting, palette, light source, inhabitants. Living creatures and magical beings are welcome but not required.
 
@@ -431,7 +435,9 @@ IMAGE_STAGE_ENDING = """Wordless illustration, no text or letters anywhere.
 
 Hand-painted storybook illustration. Spirit of Ghibli backgrounds and classic Eastern European children's book art. Ink contour and watercolor-gouache textures on paper grain. Warm directed light from a single source, cozy chiaroscuro. Three layered depths.
 
-Mood: the world is going to sleep. Tender quiet, soft darkness that feels safe, the last warmth of the day or the first warmth of the night. Slightly surreal, gently magical. Densely lived-in but at rest.
+Mood: the world is going to sleep. Tender quiet, soft darkness that feels safe, the last warmth of the day or the first warmth of the night.
+
+Openly surreal — scales can defy logic, dreamlike anomalies woven into the everyday world. Densely lived-in but at rest, small wonders everywhere.
 
 Compose the scene freely — choose your own setting, time, palette, inhabitants. Living creatures sleeping or quietly settling are welcome but not required.
 
