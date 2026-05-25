@@ -76,45 +76,35 @@ async def generate_cover(
 
     style_prompt = IMAGE_STYLE_BASE
 
-    # Жёстко запрещаем любой текст на картинке. Recraft v3 особенно склонен
-    # дорисовывать заголовки/имена/«The End» (он натренирован на book covers).
-    # IMAGE_STYLE_BASE уже начинается с «Wordless illustration, no text…»,
-    # поэтому отдельный prefix не нужен. Suffix в конце — повторная
-    # фиксация для модели, которая сильнее весит начало и конец.
-    no_text_suffix = " // wordless, no text."
-
-    # Сцена-описание идёт как «World: <сцена>» после стиля. Это контекст
-    # того, что в мире происходит — не команда «нарисуй именно это».
-    # Композицию выбирает Recraft, опираясь на IMAGE_STYLE_BASE
-    # («world is the protagonist», «characters small not portraits»,
-    # «visual generosity»). Если сцены нет — рисуем чисто по стилю.
+    # Чистый художественный промпт (см. IMAGE_STYLE_BASE) без технических
+    # guard'ов. Раньше тут был «// wordless, no text.» суффикс — его
+    # убрали ради pure-теста авторского промпта. Если Recraft начнёт
+    # дорисовывать «The End» / подписи — вернём минимальный «Без надписей.»
+    # в конец. Composition rules, anti-list, watercolor-tech слова — тоже
+    # вычищены, чтобы не противоречить художественной интонации.
+    #
+    # Сцена-описание идёт как «Сцена: <текст>» после стиля. Это контекст
+    # происходящего, не команда «нарисуй именно это» — финальную композицию
+    # художник выбирает сам.
     scene_hint = (scene_description or "").strip()
     if scene_hint:
-        # Обрезаем по бюджету, чтобы итог остался под лимитом Recraft
-        # Direct (980, наш primary с RECRAFT_STYLE_ID). Берём 975 с запасом 5.
-        # Если упадём на FAL fallback (950) — его собственный truncate
-        # отрежет хвост по splice, переживёт.
-        wrap = "World: "
-        suffix = no_text_suffix
-        budget = 975 - len(style_prompt) - len(wrap) - len(suffix) - 2
+        # Бюджет: 975 (под Recraft Direct 980 с запасом 5) − стиль − wrap − \n\n.
+        wrap = "Сцена: "
+        budget = 975 - len(style_prompt) - len(wrap) - 2
         if budget < 5:
-            # Стиль реально упёрся в лимит — мотив не влезет вообще.
-            # Раньше порог был 30; при стиле 915 char бюджет=29 < 30 →
-            # все три картинки получали идентичный prompt и Recraft
-            # рисовал визуально похожие сцены без вариации. Теперь
-            # пускаем даже короткий обрезанный hint.
-            prompt = f"{style_prompt}{suffix}"
+            # Стиль почти упёрся в лимит — мотив не влезет.
+            prompt = style_prompt
         else:
             if len(scene_hint) > budget:
-                # Обрезаем по последнему пробелу, чтобы не рвать слово.
+                # Обрезаем по последнему пробелу, не рвём слово.
                 cut = scene_hint[: budget - 1].rstrip()
                 space = cut.rfind(" ")
                 if space > budget * 0.6:
                     cut = cut[:space]
                 scene_hint = cut + "…"
-            prompt = f"{style_prompt}\n\n{wrap}{scene_hint}{suffix}"
+            prompt = f"{style_prompt}\n\n{wrap}{scene_hint}"
     else:
-        prompt = f"{style_prompt}{no_text_suffix}"
+        prompt = style_prompt
     # Логируем хвост prompt'а (последние 120 char) — там лежит scene hint
     # после стиля. Помогает увидеть, что РЕАЛЬНО попадает в Recraft:
     # одинаковый ли это хвост у трёх картинок (тогда они сольются) или

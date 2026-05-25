@@ -423,19 +423,7 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # Жёстко избегаем КОНКРЕТНЫХ what-to-draw примеров (никаких «fireflies,
 # moons, lanterns, mushrooms») — Recraft буквально натычет их в каждую
 # картинку. Только абстрактные принципы.
-IMAGE_STYLE_BASE = """Wordless illustration, no text or letters anywhere.
-
-Hand-painted children's storybook. VISIBLE watercolor washes, ink contour, gouache, paper grain, wet edges, color bleeds. NOT clean digital lineart, NOT polished graphic novel. Spirit of Kazuo Oga (Ghibli backgrounds).
-
-Visual generosity — small hidden treasures everywhere, tiny living things peeking from corners, miniature scenes on faraway planes.
-
-Time: evening, dusk, or night, never midday. One dominant warm light source plus many tiny secondary lights. Multiple atmospheric depths, each populated with something living.
-
-The world is the protagonist, not the characters. Characters, if any, stay small in their setting, never portraits.
-
-Openly surreal — scales can defy logic, dreamlike anomalies in the everyday.
-
-Avoid: small figures centered in wide landscape (manga composition), anime, 3D render, character close-up, modern technology or clothing."""
+IMAGE_STYLE_BASE = """Ты самый крутой художник и иллюстратор который компилирует и знает все стили всех именитых легендарных художников детских сказок. Юрий Васнецов, Владимир Сутеев, Май Митурич, Леонид Владимирский, Виктор Чижиков, Михаил Майофис, Геннадий Калиновский, Евгений Чарушин, Фёдор Хитрук, Роман Давыдов, Иван Иванов-Вано, Кадзуо Ога (фоны Ghibli), Зденек Милер, Беатрикс Поттер, Морис Сендак, Эрик Карл, Иван Билибин, Olya Luki. нарисуй мне иллюстрацию к картинке с богатым внутренним миром, которую хочется разглядывать и показывать другим от мала до велика. С легким уютным летним сказочным вайбом, которая будет олицетворять собой ночной или вечерний мир сказочных приключений. Эта картинка сама нелогичность, асимметричность, и все что так любят дети, и к чему не привыкли взрослые. Она несет в себе подлинность, тот тихий антураж, когда бабушки рассказывают и слагают легенды тихими вечерами у костра для своих потомков."""
 
 # Раньше тут был «A child playing with their friend {hero} ...» — это
 # жёстко диктовало модели сцену и шло вразрез с «Compose the scene
