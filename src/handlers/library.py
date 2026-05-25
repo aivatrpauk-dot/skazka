@@ -25,8 +25,8 @@ async def cb_open(call: CallbackQuery) -> None:
         ).scalars().all()
     if not rows:
         await call.message.edit_text(
-            "📚 Полка пока пустует — Вы ещё не сочинили ни одной сказки. "
-            "Давайте начнём первую, и я бережно сохраню её здесь навсегда.",
+            "📚 Полка пока пуста — здесь будут жить Ваши сказки. "
+            "Давайте сложим первую, и я бережно сохраню её сюда навсегда.",
             reply_markup=main_menu_kb(),
         )
         await call.answer()
@@ -55,7 +55,7 @@ async def cb_show(call: CallbackQuery) -> None:
             return
         u = (await s.execute(select(User).where(User.telegram_id == call.from_user.id))).scalar_one()
         if st.user_id != u.id:
-            await call.answer("Эта сказка не из вашего архива", show_alert=True)
+            await call.answer("Эта сказка не из Вашего архива.", show_alert=True)
             return
 
     # Приоритет: PDF. Если есть и файл на диске — отдаём.

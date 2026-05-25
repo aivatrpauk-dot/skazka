@@ -32,8 +32,8 @@ FAQ_TOPICS: dict[str, tuple[str, str]] = {
     ),
     "share": (
         "Можно ли поделиться сказкой с близкими",
-        "Конечно. После каждой сказки есть кнопка «Подарить эту сказку другу» — пришлёт ссылку, "
-        "по которой получатель откроет готовую сказку у себя в Telegram.",
+        "Конечно. После каждой сказки есть кнопка «Подарить сказку другу» — "
+        "она пойдёт прямо в чат получателю.",
     ),
     "data": (
         "Что с моими данными",
@@ -43,8 +43,8 @@ FAQ_TOPICS: dict[str, tuple[str, str]] = {
     ),
     "languages": (
         "Когда будет английский",
-        "Английская версия в работе. Если нужно прямо сейчас — напишите /support, "
-        "включим вас в список бета-тестеров.",
+        "Английская версия в работе. Если нужно прямо сейчас — напишите в /support, "
+        "включим Вас в список бета-тестеров.",
     ),
     "support": (
         "Связь с поддержкой",
@@ -75,7 +75,7 @@ async def cb_open(call: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("faq:show:"))
 async def cb_show(call: CallbackQuery) -> None:
     key = call.data.split(":")[2]
-    title, body = FAQ_TOPICS.get(key, ("Не найдено", "Напиши /support."))
+    title, body = FAQ_TOPICS.get(key, ("Не найдено", "Напишите в /support."))
     await call.message.edit_text(f"<b>{title}</b>\n\n{body}", reply_markup=_faq_kb())
     await call.answer()
 

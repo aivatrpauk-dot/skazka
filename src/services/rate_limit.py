@@ -87,9 +87,9 @@ def check_story_limit(telegram_id: int) -> tuple[bool, str | None]:
                 else f"{seconds_until_free // 60} мин"
             )
             msg = (
-                f"Слишком быстро 🐢\n\n"
-                f"Лимит — {limit.label}. Попробуй через {wait_human}.\n\n"
-                f"Если кажется, что это ошибка — напиши в /support."
+                f"🕯 Чуть помедленнее, пожалуйста.\n\n"
+                f"Лимит — {limit.label}. Попробуйте через {wait_human}.\n\n"
+                f"Если это ошибка — напишите в /support."
             )
             logger.info("Rate limit hit: user=%s limit=%s wait=%ds",
                         telegram_id, limit.label, seconds_until_free)

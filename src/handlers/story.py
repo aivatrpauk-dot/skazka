@@ -14,7 +14,15 @@ from sqlalchemy import desc, select, update
 
 from ..config import config
 from ..db import Session, Story, SubscriptionStatus, User
-from ..keyboards import after_story_kb, age_kb, hero_kb, main_menu_kb, paywall_kb, theme_kb
+from ..keyboards import (
+    after_story_kb,
+    age_kb,
+    daily_limit_kb,
+    hero_kb,
+    main_menu_kb,
+    paywall_kb,
+    theme_kb,
+)
 from ..prompts import HERO_QUICK_PICKS, THEME_CHOICES
 from ..services import (
     extract_scene,
@@ -91,8 +99,10 @@ def _has_active_subscription(u: User) -> bool:
 _is_paid = _has_active_subscription
 
 
-# Лимит «одна сказка в сутки». Применяется к bonus/pack/subscription, но НЕ
-# к разовой покупке (юзер платит каждый раз) и НЕ к free trial первой сказки.
+# Глобальный per-user cooldown (legacy). РЕАЛЬНЫЙ лимит «1 сказка в день
+# на ребёнка» применяется per-child через _was_story_for_child_today()
+# в _run_generation (см. ниже). Этот cooldown остаётся как доп. защита
+# от спама для pack/sub источников (юзер с подпиской без явного имени).
 DAILY_LIMIT_HOURS = 20  # с запасом ~24ч, чтоб ребёнок мог получить «вечером»
 
 
@@ -110,23 +120,29 @@ SOURCE_FREE = "free"
 SOURCE_SINGLE = "single"
 SOURCE_PACK = "pack"
 SOURCE_SUBSCRIPTION = "subscription"
-# Спец-источник для админов: обходит daily-лимит и paywall, ничего не
-# списывает. Нужен чтобы свободно тестировать прод без админских очисток.
+# Спец-источник для админов: обходит ВСЕ лимиты (включая per-child),
+# ничего не списывает. Нужен чтобы свободно тестировать прод без чисток.
 SOURCE_ADMIN = "admin"
 
 
 def _allowed_source(u: User) -> str | None:
-    """Возвращает источник, по которому юзер может сейчас сделать сказку.
-    None — значит нельзя (нужен paywall).
+    """Возвращает источник, по которому юзер может оплатить сказку.
+    None — значит нет источника (нужен paywall).
 
-    Логика:
-      0. Админ (telegram_id в config.admin_ids) — всегда SOURCE_ADMIN,
-         без лимитов и счётчиков.
-      1. Бонусные сказки (от рефералки/feedback) — без daily-лимита.
-      2. Free trial первая сказка — без daily-лимита.
-      3. Single-разовая покупка — без daily-лимита (платил же).
-      4. Pack — с daily-лимитом 1/сутки.
-      5. Subscription active — с daily-лимитом 1/сутки.
+    ВАЖНО: эта функция отвечает только за «есть ли чем заплатить», не за
+    «можно ли сегодня для этого ребёнка». Per-child лимит «1 в день на
+    ребёнка» проверяется отдельно через _was_story_for_child_today() в
+    _run_generation, после того как известно имя ребёнка. Этот лимит
+    применяется ко ВСЕМ источникам кроме админа — single тоже не
+    позволит сделать 2 сказки одному ребёнку за день.
+
+    Логика выбора источника (от халявного к дорогому):
+      0. Админ → SOURCE_ADMIN (обходит всё, включая per-child).
+      1. Бонусные сказки (от рефералки/feedback).
+      2. Free trial первая сказка.
+      3. Single-разовая покупка.
+      4. Pack (если global per-user cooldown не активен).
+      5. Subscription active (если global per-user cooldown не активен).
     """
     if u.telegram_id in config.admin_ids:
         return SOURCE_ADMIN
@@ -256,6 +272,33 @@ async def _was_story_for_child_today(user_id: int, child_name: str) -> bool:
     return last_msk == now_msk
 
 
+async def _names_used_today(user_id: int, names: list[str]) -> set[str]:
+    """Возвращает set имён из списка, для которых СЕГОДНЯ (по МСК) у юзера
+    уже была сказка. Используется в name_choice_kb чтобы помечать имена
+    с исчерпанным лимитом ещё до клика — юзер сразу видит, кому сегодня
+    нельзя, и понимает что нужно ввести нового ребёнка.
+    """
+    import datetime as _dt
+    if not names:
+        return set()
+    MSK_TZ = _dt.timezone(_dt.timedelta(hours=3))
+    now_msk_date = _dt.datetime.now(_dt.timezone.utc).astimezone(MSK_TZ).date()
+    # Граница «начало дня по МСК» в UTC = 00:00 МСК = 21:00 UTC предыдущего дня.
+    midnight_msk = _dt.datetime.combine(
+        now_msk_date, _dt.time(0, 0), tzinfo=MSK_TZ,
+    )
+    midnight_utc = midnight_msk.astimezone(_dt.timezone.utc)
+    async with Session() as s:
+        rows = (await s.execute(
+            select(Story.child_name).distinct().where(
+                Story.user_id == user_id,
+                Story.child_name.in_(names),
+                Story.created_at >= midnight_utc,
+            )
+        )).all()
+    return {r[0] for r in rows if r[0]}
+
+
 @router.callback_query(F.data == "story:new")
 async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
     u = await _get_user(call.from_user.id)
@@ -270,13 +313,32 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
     # Имя ВСЕГДА спрашиваем заново. Если у юзера уже были сказки — даём
     # список последних имён + «Другое имя». Если это первая сказка — сразу
     # просим написать имя.
+    #
+    # Имена, для которых сегодня уже была сказка, помечаем галочкой —
+    # юзер не пройдёт визард впустую (раньше: выбор имени → возраст →
+    # тема → ОТКАЗ; теперь видно «✅ Маша (сегодня уже была)» прямо в
+    # списке, клик показывает alert, не запускает визард).
     from ..keyboards import name_choice_kb
     names = await _get_user_child_names(u.id)
     if names:
+        used_today = await _names_used_today(u.id, names[:5])
+        # Если ВСЕ имена в кнопках исчерпали лимит — мягко поясняем
+        # контекст в заголовке, чтобы юзер не недоумевал почему всё в
+        # галочках. Кнопка «Другое имя» остаётся доступной.
+        if used_today and len(used_today) >= len(names[:5]):
+            header = (
+                "🌙 Для всех Ваших детей сегодня уже сложилась сказка.\n"
+                "<i>Если хотите, можно сделать для другого ребёнка — "
+                "введите его имя.</i>"
+            )
+        else:
+            header = (
+                "🕯 Для кого сегодня сказка?\n"
+                "<i>Выберите ребёнка из списка или введите другое имя.</i>"
+            )
         await call.message.edit_text(
-            "🕯 Для кого сегодня сказка?\n"
-            "<i>Выберите ребёнка из списка или введите другое имя.</i>",
-            reply_markup=name_choice_kb(names),
+            header,
+            reply_markup=name_choice_kb(names, used_today=used_today),
         )
         await state.set_state(StoryWizard.waiting_name_choice)
         await call.answer()
@@ -310,10 +372,25 @@ async def cb_name_new(call: CallbackQuery, state: FSMContext) -> None:
     """Юзер выбрал «Другое имя» → просим ввести новое."""
     await state.update_data(child_name=None)
     await call.message.edit_text(
-        "🕯 Напишите имя ребёнка.",
+        "🕯 Как зовут ребёнка? Напишите имя.",
     )
     await state.set_state(StoryWizard.waiting_child_name)
     await call.answer()
+
+
+@router.callback_query(F.data.startswith("name:done:"))
+async def cb_name_done(call: CallbackQuery) -> None:
+    """Юзер кликнул на имя, помеченное «✅ … (сегодня уже была)».
+    Показываем alert вместо запуска визарда, чтобы он сразу понял
+    почему ничего не происходит и что нужно ввести другое имя.
+    """
+    name = call.data.split(":", 2)[2] if call.data.count(":") >= 2 else ""
+    pretty = name or "этого ребёнка"
+    await call.answer(
+        f"Для {pretty} сегодня сказка уже была. "
+        "Чтобы сделать ещё одну, введите имя другого ребёнка.",
+        show_alert=True,
+    )
 
 
 @router.message(StoryWizard.waiting_child_name)
@@ -321,8 +398,7 @@ async def m_child_name(message: Message, state: FSMContext) -> None:
     raw = (message.text or "").strip()[:32]
     if not raw or not raw.replace("-", "").replace(" ", "").isalpha():
         await message.answer(
-            "Пожалуйста, только буквы — и не длиннее тридцати двух знаков. "
-            "Попробуйте ещё раз."
+            "🕯 Только буквы, до тридцати двух знаков. Попробуйте ещё раз."
         )
         return
     name = normalize_name(raw)  # ЛИза → Лиза, анна-мария → Анна-Мария
@@ -345,7 +421,7 @@ async def cb_change_name(call: CallbackQuery, state: FSMContext) -> None:
     """
     await state.update_data(child_name=None)
     await call.message.edit_text(
-        "🕯 Напишите имя ребёнка."
+        "🕯 Как зовут ребёнка? Напишите имя."
     )
     await state.set_state(StoryWizard.waiting_child_name)
     await call.answer()
@@ -412,8 +488,10 @@ async def m_custom_hero(message: Message, state: FSMContext) -> None:
     # Очищаем от спецсимволов, обрезаем до 48, схлопываем пробелы
     hero = sanitize_user_text(message.text or "", max_len=48)
     if not hero or len(hero) < 2:
-        await message.answer("Имя или название героя — до сорока восьми символов "
-                             "(только буквы, цифры, пробелы, дефисы).")
+        await message.answer(
+            "🕯 Имя героя — до сорока восьми знаков, обычными буквами. "
+            "Попробуйте ещё раз."
+        )
         return
     await state.update_data(hero=hero, _await_custom_hero=False)
     await message.answer(
@@ -470,10 +548,14 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
                 f"🌙 Для {genitive(candidate_name)} сказка уже была сегодня.\n\n"
                 "Пусть ребёнок подумает о ней перед сном и спокойно уснёт — "
                 "это и есть ритуал, где важно качество, а не количество.\n\n"
-                "Завтра — новая. А сейчас, если хотите, можно сделать сказку "
-                "для другого ребёнка.",
-                reply_markup=main_menu_kb(),
+                "Завтра — новая. А если хочется сказку для другого "
+                "ребёнка — нажмите кнопку ниже и введите имя.",
+                reply_markup=daily_limit_kb(),
             )
+            # Сбрасываем имя из state, чтобы клик «Другому ребёнку»
+            # (callback name:new) корректно ушёл в чистый ввод имени.
+            await state.update_data(child_name=None)
+            await state.set_state(StoryWizard.waiting_name_choice)
             await call.answer()
             return
 
@@ -653,9 +735,22 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         # Затем PDF-книжку
         if pdf_path and pdf_path.exists():
             try:
-                # Имя файла для юзера в Telegram — название сказки латиницей
-                # (Telegram плохо отображает кириллицу в filename на некоторых клиентах)
-                safe_name = f"{data['child_name']} & {data['hero']}.pdf".replace("/", "-")
+                # Имя файла для юзера в Telegram — название самой сказки
+                # (то, что сказочник пишет первой строкой, парсится в
+                # parse_story_title). Если по какой-то причине названия
+                # нет — fallback на «{ребёнок} & {герой}». Санитизируем
+                # символы, которые ломают filesystem или Telegram-клиента.
+                _raw_title = (story_title or "").strip()
+                if _raw_title:
+                    # Убираем символы, недопустимые в именах файлов на
+                    # Windows/Mac/Linux: / \ : * ? " < > | + перенос строк.
+                    import re as _re_fn
+                    _safe = _re_fn.sub(r'[/\\:*?"<>|\r\n\t]', "-", _raw_title)
+                    # Обрезаем по 80 символов с запасом под расширение
+                    _safe = _safe.strip(" .-")[:80] or "Сказка"
+                    safe_name = f"{_safe}.pdf"
+                else:
+                    safe_name = f"{data['child_name']} & {data['hero']}.pdf".replace("/", "-")
                 await call.message.answer_document(
                     FSInputFile(str(pdf_path), filename=safe_name),
                     caption=f"📖 Сказка на сегодня для {_gen(data['child_name'])}",

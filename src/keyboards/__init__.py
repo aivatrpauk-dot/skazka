@@ -8,6 +8,7 @@ from .inline import (
     paywall_kb,
     library_kb,
     after_story_kb,
+    daily_limit_kb,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "paywall_kb",
     "library_kb",
     "after_story_kb",
+    "daily_limit_kb",
 ]

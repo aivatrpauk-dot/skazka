@@ -67,9 +67,9 @@ async def cb_gift_new(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(GiftWizard.waiting_recipient_name)
     await call.message.edit_text(
         "🎁 <b>Сказка в подарок</b>\n\n"
-        "Сделаем персональную сказку для близкого ребёнка — с его именем, "
-        "любимым героем и вашим тёплым посланием. Стоимость — <b>199 ₽</b>.\n\n"
-        "Для какого ребёнка делаем подарок? Напишите его имя."
+        "Сложим персональную сказку — с именем ребёнка, его любимым "
+        "героем и Вашим тёплым посланием. Стоимость — <b>199 ₽</b>.\n\n"
+        "Как зовут того, кому делаем подарок? Напишите имя."
     )
     await call.answer()
 
@@ -78,11 +78,11 @@ async def cb_gift_new(call: CallbackQuery, state: FSMContext) -> None:
 async def m_recipient_name(message: Message, state: FSMContext) -> None:
     raw = (message.text or "").strip()[:32]
     if not raw or not raw.replace("-", "").replace(" ", "").isalpha():
-        await message.answer("Имя только буквами, до 32 символов. Попробуйте ещё раз.")
+        await message.answer("🕯 Только буквы, до тридцати двух знаков. Попробуйте ещё раз.")
         return
     name = normalize_name(raw)
     await state.update_data(recipient_name=name)
-    await message.answer(f"Сколько лет {dative(name)}?", reply_markup=age_kb())
+    await message.answer(f"🕯 Сколько лет {dative(name)}?", reply_markup=age_kb())
     await state.set_state(GiftWizard.waiting_recipient_age)
 
 
@@ -92,7 +92,7 @@ async def cb_recipient_age(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(recipient_age=age)
     data = await state.get_data()
     await call.message.edit_text(
-        f"Кто будет главным героем сказки рядом с {instrumental(data['recipient_name'])}?",
+        f"🪶 Кто будет главным героем сказки рядом с {instrumental(data['recipient_name'])}?",
         reply_markup=hero_kb(),
     )
     await state.set_state(GiftWizard.waiting_hero)
@@ -104,13 +104,13 @@ async def cb_gift_hero(call: CallbackQuery, state: FSMContext) -> None:
     raw = call.data.split(":", 1)[1]
     if raw == "custom":
         await call.message.edit_text(
-            "Напишите героя. Например: «дельфинёнок», «робот-садовник»."
+            "🪶 Напишите героя — например: «дельфинёнок», «робот-садовник»."
         )
         await state.update_data(_await_custom_hero=True)
         await call.answer()
         return
     await state.update_data(hero=raw, _await_custom_hero=False)
-    await call.message.edit_text("Какая тема сказки?", reply_markup=theme_kb())
+    await call.message.edit_text("🕯 Какая тема сказки?", reply_markup=theme_kb())
     await state.set_state(GiftWizard.waiting_theme)
     await call.answer()
 
@@ -122,10 +122,10 @@ async def m_gift_custom_hero(message: Message, state: FSMContext) -> None:
         return
     hero = (message.text or "").strip()[:48]
     if not hero:
-        await message.answer("Напишите имя или название героя, до 48 символов.")
+        await message.answer("🕯 Имя героя — до сорока восьми знаков. Попробуйте ещё раз.")
         return
     await state.update_data(hero=hero, _await_custom_hero=False)
-    await message.answer("Какая тема сказки?", reply_markup=theme_kb())
+    await message.answer("🕯 Какая тема сказки?", reply_markup=theme_kb())
     await state.set_state(GiftWizard.waiting_theme)
 
 
@@ -137,9 +137,11 @@ async def cb_gift_theme(call: CallbackQuery, state: FSMContext) -> None:
         return
     await state.update_data(theme_key=theme_key)
     await call.message.edit_text(
-        "Напишите личное послание дарителя — что-то тёплое или поздравление. "
-        "Бот вплетёт смысл в сказку, не цитируя дословно.\n\n"
-        "<i>Например: «С днём рождения, моя любимая принцесса! Желаю смелости и волшебных открытий».</i>"
+        "🕯 Напишите личное послание от Вас — что-то тёплое или "
+        "поздравление. Сказочник вплетёт его смысл в сказку, не "
+        "цитируя дословно.\n\n"
+        "<i>Например: «С днём рождения, моя любимая принцесса! "
+        "Желаю смелости и волшебных открытий».</i>"
     )
     await state.set_state(GiftWizard.waiting_personal_note)
     await call.answer()
@@ -149,7 +151,7 @@ async def cb_gift_theme(call: CallbackQuery, state: FSMContext) -> None:
 async def m_personal_note(message: Message, state: FSMContext) -> None:
     note = (message.text or "").strip()[:500]
     if len(note) < 5:
-        await message.answer("Напишите послание подлиннее — хотя бы 5 символов.")
+        await message.answer("🕯 Послание чуть длиннее, пожалуйста — хотя бы пять знаков.")
         return
     await state.update_data(personal_note=note)
     data = await state.get_data()
@@ -160,9 +162,9 @@ async def m_personal_note(message: Message, state: FSMContext) -> None:
         f"Для кого: <b>{data['recipient_name']}</b> ({data['recipient_age']} лет)\n"
         f"Главный герой: <b>{data['hero']}</b>\n"
         f"Тема: <b>{theme_label}</b>\n"
-        f"Послание от вас:\n<i>{note}</i>\n\n"
-        "После оплаты бот сложит персональную PDF-книжечку с тремя "
-        "иллюстрациями и пришлёт её сюда — Вы перешлёте близким.\n\n"
+        f"Послание от Вас:\n<i>{note}</i>\n\n"
+        "После оплаты сказочник сложит персональную PDF-книжечку с "
+        "тремя иллюстрациями и пришлёт её сюда — Вы перешлёте близким.\n\n"
         "Стоимость: <b>199 ₽</b>."
     )
     await message.answer(summary, reply_markup=_gift_summary_kb())
@@ -173,7 +175,7 @@ async def m_personal_note(message: Message, state: FSMContext) -> None:
 async def cb_gift_cancel(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     _pending_gifts.pop(call.from_user.id, None)
-    await call.message.edit_text("Хорошо, отменил. Возвращаемся в меню.", reply_markup=main_menu_kb())
+    await call.message.edit_text("🕯 Хорошо, отменили. Возвращаемся в меню.", reply_markup=main_menu_kb())
     await call.answer()
 
 
@@ -182,7 +184,7 @@ async def cb_gift_pay(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     data = await state.get_data()
     required = {"recipient_name", "recipient_age", "hero", "theme_key", "personal_note"}
     if not required.issubset(data.keys()):
-        await call.answer("Параметры не заполнены, начните заново", show_alert=True)
+        await call.answer("Не хватает данных подарка — начните, пожалуйста, заново.", show_alert=True)
         return
 
     # Сохраняем параметры для использования после оплаты
@@ -212,7 +214,7 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
         try:
             await bot.send_message(
                 telegram_user_id,
-                "Не нашёл данные вашего подарка. Это редкая ошибка — напишите /support, оформим вручную.",
+                "🕯 Не нашли данные Вашего подарка. Это редкая ошибка — напишите в /support, оформим вручную.",
             )
         except Exception:
             pass
@@ -232,7 +234,7 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
         logger.exception("Подарочная сказка не сгенерилась: %s", e)
         await bot.send_message(
             chat_id,
-            "Что-то пошло не так у сказочника. Напишите /support — вернём деньги или сделаем вручную.",
+            "🕯 У сказочника что-то не сложилось. Напишите в /support — вернём деньги или сделаем вручную.",
         )
         return
 
@@ -244,7 +246,7 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
     await bot.send_message(
         chat_id,
         f"🎁 <b>Сказка в подарок для {params['recipient_name']} готова</b>\n\n"
-        "Пересылайте всё ниже близким — текст, картинку и аудио — обычным форвардом Telegram.",
+        "Перешлите всё ниже близким — текст, картинку и аудио — обычной пересылкой в Telegram.",
     )
 
     # 1) Картинка
@@ -324,7 +326,7 @@ async def cb_gift_share(call: CallbackQuery) -> None:
             return
         u = (await s.execute(select(User).where(User.telegram_id == call.from_user.id))).scalar_one_or_none()
         if not u or st.user_id != u.id:
-            await call.answer("Это не ваша сказка", show_alert=True)
+            await call.answer("Эта сказка не из Вашего архива.", show_alert=True)
             return
 
     await call.answer()

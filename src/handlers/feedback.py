@@ -97,9 +97,9 @@ async def maybe_ask_for_feedback(message: Message, user_telegram_id: int) -> Non
 async def cb_feedback_start(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(FeedbackFlow.waiting_text)
     await call.message.edit_text(
-        "🕯 Слушаю Вас внимательно. Будьте честны — мне нужны именно "
-        "слабые места, без вежливости. Двух-трёх предложений вполне "
-        "достаточно."
+        "🕯 Слушаю Вас внимательно. Будьте откровенны — мне важны "
+        "именно слабые места, даже если покажутся резкими. "
+        "Двух-трёх предложений достаточно."
     )
     await call.answer()
 

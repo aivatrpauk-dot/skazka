@@ -25,19 +25,37 @@ def main_menu_kb(
     return kb.as_markup()
 
 
-def name_choice_kb(names: list[str]) -> InlineKeyboardMarkup:
+def name_choice_kb(
+    names: list[str],
+    used_today: set[str] | None = None,
+) -> InlineKeyboardMarkup:
     """Клавиатура выбора ребёнка — список ранее использованных имён.
     Если у юзера ДВА разных ребёнка, он каждый раз сам выбирает кому
     сегодняшняя сказка. Плюс кнопка «Другое имя» — ввести новое имя
     (например, если племянник пришёл в гости).
 
+    used_today — set имён, для которых сегодня (по МСК) уже была сказка.
+    Такие имена помечаются префиксом «✅» и при клике на них юзер
+    получит alert вместо перехода в визард — это явный сигнал «лимит»
+    ещё до прохождения всего flow.
+
     Имена в callback_data передаются URL-encoded на случай странных
     символов в имени; обычно это просто кириллица или латиница.
     """
+    used_today = used_today or set()
     kb = InlineKeyboardBuilder()
     # До 5 последних имён в кнопках (больше не помещается в чате).
     for name in names[:5]:
-        kb.button(text=f"👤 {name}", callback_data=f"name:pick:{name}")
+        if name in used_today:
+            # Префикс «✅» = «для этого ребёнка сегодня уже была сказка».
+            # callback_data другой — обрабатывается отдельным handler'ом,
+            # который покажет alert вместо запуска визарда.
+            kb.button(
+                text=f"✅ {name} (сегодня уже была)",
+                callback_data=f"name:done:{name}",
+            )
+        else:
+            kb.button(text=f"👤 {name}", callback_data=f"name:pick:{name}")
     kb.button(text="✏️ Другое имя", callback_data="name:new")
     kb.button(text="◀ В меню", callback_data="story:cancel")
     kb.adjust(1)
@@ -126,6 +144,19 @@ def library_kb(stories: list[tuple[int, str]]) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for sid, title in stories[:20]:
         kb.button(text=title, callback_data=f"lib:show:{sid}")
+    kb.button(text="◀ В меню", callback_data="menu:main")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def daily_limit_kb() -> InlineKeyboardMarkup:
+    """Клавиатура для сообщения отказа дневного лимита («для Маши сегодня
+    сказка уже была»). Даёт явный путь к покупке сказки для другого
+    ребёнка одним кликом — иначе юзер вынужден возвращаться в меню и
+    проходить весь flow заново, что выглядит как тупик.
+    """
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✏️ Сделать для другого ребёнка", callback_data="name:new")
     kb.button(text="◀ В меню", callback_data="menu:main")
     kb.adjust(1)
     return kb.as_markup()
