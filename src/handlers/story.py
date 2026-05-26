@@ -288,27 +288,34 @@ async def _was_story_for_child_today(user_id: int, child_name: str) -> bool:
 
 
 async def _names_used_today(user_id: int, names: list[str]) -> set[str]:
-    """Возвращает set имён из списка, для которых СЕГОДНЯ (по МСК) у юзера
-    уже была сказка. Используется в name_choice_kb чтобы помечать имена
-    с исчерпанным лимитом ещё до клика — юзер сразу видит, кому сегодня
-    нельзя, и понимает что нужно ввести нового ребёнка.
+    """Возвращает set имён из списка, для которых в ТЕКУЩИХ «сказочных
+    сутках» (08:00 МСК → 08:00 МСК) у юзера уже была сказка. Используется
+    в name_choice_kb чтобы помечать имена с исчерпанным лимитом ещё до
+    клика — юзер сразу видит, кому сегодня нельзя.
+
+    ВАЖНО: должно быть согласовано с _was_story_for_child_today по
+    границе суток. Раньше тут была полуночная граница МСК, что давало
+    8-часовое визуальное расхождение между 00:00 и 08:00 МСК (UI
+    показывал имя свободным, главный блокатор отказывал).
     """
-    import datetime as _dt
     if not names:
         return set()
-    MSK_TZ = _dt.timezone(_dt.timedelta(hours=3))
-    now_msk_date = _dt.datetime.now(_dt.timezone.utc).astimezone(MSK_TZ).date()
-    # Граница «начало дня по МСК» в UTC = 00:00 МСК = 21:00 UTC предыдущего дня.
-    midnight_msk = _dt.datetime.combine(
-        now_msk_date, _dt.time(0, 0), tzinfo=MSK_TZ,
+    # Граница текущих «сказочных суток» — последнее наступление 08:00 МСК.
+    now_utc = _dt.datetime.now(_dt.timezone.utc)
+    now_msk = now_utc.astimezone(_MSK_TZ)
+    reset_today_msk = now_msk.replace(
+        hour=STORY_DAY_RESET_HOUR_MSK, minute=0, second=0, microsecond=0,
     )
-    midnight_utc = midnight_msk.astimezone(_dt.timezone.utc)
+    if now_msk < reset_today_msk:
+        # Сейчас ещё до 08:00 МСК — текущие сутки начались вчера в 08:00.
+        reset_today_msk -= _dt.timedelta(days=1)
+    reset_utc = reset_today_msk.astimezone(_dt.timezone.utc)
     async with Session() as s:
         rows = (await s.execute(
             select(Story.child_name).distinct().where(
                 Story.user_id == user_id,
                 Story.child_name.in_(names),
-                Story.created_at >= midnight_utc,
+                Story.created_at >= reset_utc,
             )
         )).all()
     return {r[0] for r in rows if r[0]}
