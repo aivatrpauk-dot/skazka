@@ -912,6 +912,9 @@ async def cmd_admin_help(message: Message) -> None:
         "<code>/partner_link CODE</code> — deep-link для размещения\n"
         "<code>/partner_payout CODE METHOD [REF]</code> — пометить pending как выплаченные\n"
         "<code>/seed_partners</code> — посеять тестовых партнёров\n\n"
+        "<b>📢 Канальная воронка</b>\n"
+        "<code>/seed_channel N</code> — накатить N сказок в канал подряд "
+        "(бэкфилл перед запуском рекламы, max 10).\n\n"
         "<i>Все команды видишь только ты (по списку ADMIN_IDS в .env). "
         "Обычный юзер их не видит и не может выполнить.</i>"
     )
@@ -1081,4 +1084,81 @@ async def cmd_clear_stories(message: Message, command: CommandObject) -> None:
         f"Юзер: {username} · tg:<code>{target_tg_id}</code>\n"
         f"Ребёнок: {child}\n\n"
         f"Счётчики, подписка и платежи целы. Бэкап БД лежит в /backups/."
+    )
+
+
+# ============================================================================
+# /seed_channel <N> — бэкфилл канала перед запуском рекламы
+# ============================================================================
+
+@router.message(Command("seed_channel"))
+async def cmd_seed_channel(message: Message, command: CommandObject) -> None:
+    """Накатить N сказок подряд в канал.
+
+    Каждая сказка — полный flow (LLM + картинка + PDF), ~30 сек на одну.
+    Обходит идемпотентность «один пост в сутки». Счётчик CTA-такта
+    обновляется корректно — каждый 3-й пост получит CTA-блок.
+
+    Использование:
+      /seed_channel 5    — опубликовать 5 сказок подряд
+    """
+    if not _is_admin(message.from_user.id):
+        return
+
+    raw = (command.args or "").strip()
+    if not raw or not raw.isdigit():
+        await message.answer(
+            "Использование: <code>/seed_channel N</code>\n\n"
+            "Например: <code>/seed_channel 5</code> — опубликует 5 сказок "
+            "подряд в канал, обходя ограничение «один пост в сутки».\n\n"
+            "Каждая сказка генерится ~30 секунд (LLM + Recraft), "
+            "поэтому 5 штук займут ~3 минуты. Каждый 3-й пост по счёту "
+            "получит CTA-ссылку на бот."
+        )
+        return
+    n = int(raw)
+    if n < 1 or n > 10:
+        await message.answer("N должно быть от 1 до 10. Это разовая операция, не массовый постинг.")
+        return
+
+    if not config.channel_publish_enabled or not config.channel_id:
+        await message.answer(
+            "❌ Канал не настроен.\n\n"
+            "В .env должны быть:\n"
+            "<code>CHANNEL_PUBLISH_ENABLED=true</code>\n"
+            "<code>CHANNEL_ID=@your_channel</code>"
+        )
+        return
+
+    from ..services.channel_publisher import publish_to_channel
+    from aiogram import Bot
+
+    # Достаём бот из контекста сообщения
+    bot: Bot = message.bot
+
+    await message.answer(
+        f"🚀 Запускаю бэкфилл: <b>{n}</b> сказок в {config.channel_id}.\n\n"
+        f"Это займёт ~{n * 30} секунд. Логи будут писаться в docker compose logs."
+    )
+
+    succeeded = 0
+    failed = 0
+    for i in range(1, n + 1):
+        try:
+            ok = await publish_to_channel(bot, force=True)
+            if ok:
+                succeeded += 1
+                logger.info("seed_channel: %d/%d опубликовано", i, n)
+            else:
+                failed += 1
+                logger.warning("seed_channel: %d/%d не опубликовано", i, n)
+        except Exception as e:
+            failed += 1
+            logger.exception("seed_channel: %d/%d упало: %s", i, n, e)
+
+    await message.answer(
+        f"✅ Готово.\n"
+        f"Успешно: <b>{succeeded}</b>\n"
+        f"С ошибками: <b>{failed}</b>\n\n"
+        f"Загляните в {config.channel_id} — должно быть {succeeded} новых постов."
     )

@@ -132,14 +132,19 @@ def _today_msk_iso() -> str:
 
 # ─────────────── Главная функция ───────────────
 
-async def publish_to_channel(bot: Bot) -> bool:
+async def publish_to_channel(bot: Bot, *, force: bool = False) -> bool:
     """Полный flow одной публикации: сгенерить → собрать → запостить.
 
     Возвращает True если опубликовано (или уже было сегодня — это тоже
     «успех», ничего не делаем). False если случилась ошибка.
 
-    Идемпотентно: если за сегодня уже постили — выходит сразу. Это защита
-    от ситуации «бот рестартанулся и scheduler выстрелил повторно».
+    force=False (по умолчанию) — идемпотентно: если за сегодня уже
+    постили, пропускаем. Это защита от рестарта бота в момент срабатывания
+    scheduler'а.
+
+    force=True — обходим проверку идемпотентности. Используется командой
+    /seed_channel для бэкфилла (нужно сделать N постов подряд для
+    наполнения канала перед запуском рекламы).
     """
     if not config.channel_publish_enabled:
         logger.info("CHANNEL_PUBLISH_ENABLED=false — пропускаю публикацию")
@@ -150,7 +155,7 @@ async def publish_to_channel(bot: Bot) -> bool:
 
     state = _read_state()
     today = _today_msk_iso()
-    if state.get("last_posted_date") == today:
+    if not force and state.get("last_posted_date") == today:
         logger.info("Сегодня (%s) уже постили в канал — пропускаю", today)
         return True  # уже сделано, не ошибка
 
