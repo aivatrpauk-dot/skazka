@@ -111,10 +111,14 @@ def prepare_image(path: Path) -> tuple[str, bytes, str]:
 # ─────────────────── Логика ───────────────────
 
 def main() -> None:
-    image_files = sorted(REF_DIR.glob("0?_*.png"))
-    if not image_files:
-        # На всякий случай попробуем и jpg
-        image_files = sorted(REF_DIR.glob("0?_*.jpg"))
+    # Собираем PNG и JPG вместе. Раньше брали либо одно либо другое
+    # (.png ИЛИ .jpg), и если попадались оба формата в одном датасете,
+    # JPG-картинки тихо отваливались. Берём всё и сортируем по имени.
+    image_files = sorted(
+        list(REF_DIR.glob("0?_*.png"))
+        + list(REF_DIR.glob("0?_*.jpg"))
+        + list(REF_DIR.glob("0?_*.jpeg"))
+    )
 
     if not image_files:
         print(f"ERROR: не найдено картинок в {REF_DIR}")

@@ -410,34 +410,32 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # Иллюстрации — единая стилевая константа для Recraft
 # ────────────────────────────────────────────────────────────────
 #
-# Раньше было три stage-промпта (OPENING/CLIMAX/ENDING) с микро-разницей
-# в Mood. Это давало одинаковый стиль и удваивало код на ровном месте —
-# вариация между картинками идёт от scene_description (Claude), а не от
-# stage-промпта. Поэтому теперь — одна универсальная константа на все
-# три картинки. Stage больше не нужен.
+# Стиль (техника, палитра, фактура) теперь живёт В НАТРЕНИРОВАННОМ
+# RECRAFT_STYLE_ID, а не в этом тексте. См. style_references/README.md
+# про текущий датасет («сказка на ночь», май 2026) и
+# scripts/create_recraft_style.py про процесс тренировки.
 #
-# Главные принципы константы (из продуктовой спеки):
-# — «Visual generosity»: плотный мир, маленькие сокровища в углах,
-#   награда за долгий взгляд.
-# — «The world is the protagonist, not the characters»: герои если есть
-#   — не портреты, а часть мира. Эту проблему ловили на практике
-#   (двое детей крупным планом без сюра).
-# — Openly surreal: масштаб и пропорции могут нарушать логику.
-# — Несколько источников света — один доминирующий тёплый + множество
-#   маленьких вторичных.
-# — Anti-list в конце: то, чего категорически быть не должно (3D, аниме,
-#   крупный план персонажа, пустой фон, generic AI).
+# Соответственно промпт стал короче и теплее. Не описываем «watercolor,
+# visible brush, no 3D, no anime» — стиль это уже знает из тренировки.
+# Описываем только то, что меняется от картинки к картинке: мир, настроение,
+# что в сцене происходит. Технические запреты (anti-3D, anti-anime,
+# yellow-green negation) убраны — они нужны были чтобы пробить старый
+# generic preset; натренированный стиль их не требует.
 #
-# Жёстко избегаем КОНКРЕТНЫХ what-to-draw примеров (никаких «fireflies,
-# moons, lanterns, mushrooms») — Recraft буквально натычет их в каждую
-# картинку. Только абстрактные принципы.
-IMAGE_STYLE_BASE = """You are a master illustrator of children's books, blending styles of Yuri Vasnetsov, Vladimir Suteev, May Miturich, Yevgeny Charushin, Kazuo Oga (Ghibli backgrounds), Beatrix Potter, Maurice Sendak, Ivan Bilibin.
+# Главные оставшиеся принципы:
+# — Bedtime tone — спокойная вечерняя интонация (это позиционирование
+#   продукта: одна персональная сказка перед сном для ребёнка 3-6).
+# — Плотный обжитый мир с деталями (родитель смотрит вечером, ребёнок
+#   видит в PDF днём — обе аудитории награждены за разглядывание).
+# — Антропоморфные звери и герои в живых сценах — НЕ портреты, НЕ
+#   статичные позы. Сюр допустим, но мягкий (волшебное, а не тревожное).
+# — Без конкретных what-to-draw мотивов — иначе Recraft буквально
+#   натычет «fireflies, moons, lanterns» в каждую картинку.
+IMAGE_STYLE_BASE = """Уютная иллюстрация в духе классической детской книги перед сном. Тёплый вечерний свет — лампа, свеча, тёплый янтарь, мягкая синева сумерек.
 
-Rich inner life, rewards long looking. Cozy summer fairy-tale vibe, nocturnal or evening world of magical adventures. Illogic and asymmetry itself — the kind children love and adults are unused to. The quiet authenticity of grandmothers weaving legends by the fire.
+Антропоморфные звери и сказочные герои в спокойных живых моментах: читают, идут домой, смотрят в окно, разговаривают. Не статичные портреты. Густой обжитый мир с мелкими деталями — обстановка, предметы, мелкие жители — есть что разглядывать.
 
-Palette: deep night and twilight — blue, purple, indigo, plum, lilac, turquoise. A true night world, not a golden evening. No yellow-green daytime tones. One warm accent allowed, never dominant.
-
-Technique: hand-painted book illustration — watercolor and gouache, visible brush, living contour, paper texture. The world is the protagonist, not character faces. No modern setting, no 3D smoothness, no anime."""
+Волшебство мягкое и тёплое: говорящие звери, ожившие предметы, дома с характером. Сюр допустим, но без тревоги — это сказка, рассказанная маме и папой перед сном."""
 
 # Раньше тут был «A child playing with their friend {hero} ...» — это
 # жёстко диктовало модели сцену и шло вразрез с «Compose the scene
