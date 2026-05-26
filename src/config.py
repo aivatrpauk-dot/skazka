@@ -66,39 +66,10 @@ class Config:
     gemini_model_free: str = field(default_factory=lambda: _env("GEMINI_MODEL_FREE", "gemini-2.5-flash-lite"))
     gemini_model_paid: str = field(default_factory=lambda: _env("GEMINI_MODEL_PAID", "gemini-2.5-flash"))
 
-    # ─────────────── TTS (озвучка) ───────────────
-    # USE_TTS=false → новый продукт: PDF-книжка + ambient музыка, родитель сам читает.
-    # USE_TTS=true → старый режим с аудио-озвучкой через TTS_PROVIDER.
-    # По дефолту выключено — это новое позиционирование продукта.
-    use_tts: bool = field(default_factory=lambda: _bool("USE_TTS", False))
-
-    # azure (default, ~7 ₽/сказка) → yandex (fallback) → elevenlabs (last resort)
-    tts_provider: str = field(default_factory=lambda: _env("TTS_PROVIDER", "azure"))
-
-    # Azure Neural TTS (premium, новый primary)
-    azure_speech_key: str = field(default_factory=lambda: _env("AZURE_SPEECH_KEY", ""))
-    azure_speech_region: str = field(default_factory=lambda: _env("AZURE_SPEECH_REGION", "westeurope"))
-    # ru-RU-SvetlanaNeural — тёплая мама, для сказок 3-7.
-    # Альтернативы: ru-RU-DariyaNeural (мягкая молодая), ru-RU-DmitryNeural (мужской).
-    azure_tts_voice: str = field(default_factory=lambda: _env("AZURE_TTS_VOICE", "ru-RU-SvetlanaNeural"))
-    # Styles SvetlanaNeural поддерживает: chat, friendly, hopeful, affectionate, gentle.
-    # affectionate — «мама перед сном» (тёплый, мягкий, любящий).
-    azure_tts_style: str = field(default_factory=lambda: _env("AZURE_TTS_STYLE", "affectionate"))
-    # rate — скорость речи. Формат Azure: "-10%", "+5%", "slow", "default".
-    # -8% даёт сонный медленный темп.
-    azure_tts_rate: str = field(default_factory=lambda: _env("AZURE_TTS_RATE", "-8%"))
-
-    # Yandex SpeechKit (fallback)
-    yandex_api_key: str = field(default_factory=lambda: _env("YANDEX_API_KEY", ""))
-    yandex_folder_id: str = field(default_factory=lambda: _env("YANDEX_FOLDER_ID", ""))
-    yandex_tts_voice: str = field(default_factory=lambda: _env("YANDEX_TTS_VOICE", "alena"))
-    yandex_tts_emotion: str = field(default_factory=lambda: _env("YANDEX_TTS_EMOTION", "good"))
-    yandex_tts_speed: float = field(default_factory=lambda: _float("YANDEX_TTS_SPEED", 0.95))
-
-    # ElevenLabs (последний fallback)
-    elevenlabs_api_key: str = field(default_factory=lambda: _env("ELEVENLABS_API_KEY", ""))
-    elevenlabs_voice_id: str = field(default_factory=lambda: _env("ELEVENLABS_VOICE_ID", "gD1IexrzCvsXPHUuT0s3"))
-    elevenlabs_model: str = field(default_factory=lambda: _env("ELEVENLABS_MODEL", "eleven_turbo_v2_5"))
+    # TTS (озвучка) удалена в мае 2026 — продукт стал «PDF-книжка, родитель
+    # читает сам перед сном». Если когда-то будете возвращать озвучку,
+    # подсмотрите в git-историю: tts.py, tts_azure.py, bg_music.py и блок
+    # azure_*/yandex_*/elevenlabs_*/suno_* конфигов лежали тут.
 
     # ─────────────── Изображения ───────────────
     # IMAGE_MODEL: recraft-v3 (premium, ~3.6 ₽) | flux-pro-1.1 | flux-dev | flux-schnell (0.3 ₽).
@@ -140,17 +111,6 @@ class Config:
 
     # Legacy: если задан FAL_MODEL — переопределяет image_model (backward compat).
     fal_model_legacy: str = field(default_factory=lambda: _env("FAL_MODEL", ""))
-
-    # Suno V5 через kie.ai — для генерации фоновых инструментальных колыбельных
-    kie_api_key: str = field(default_factory=lambda: _env("KIE_API_KEY", ""))
-    suno_model: str = field(default_factory=lambda: _env("SUNO_MODEL", "V5"))
-
-    # Кредиты для музыки в PDF — если используешь Kevin MacLeod (CC BY 3.0)
-    # или другие треки требующие атрибуции, положи строку сюда. Будет показана
-    # внизу последней страницы книжки. Пример:
-    #   MUSIC_CREDITS=Music: Kevin MacLeod (incompetech.com), licensed under CC BY 3.0
-    # Для Pixabay / public domain треков можно оставить пустым.
-    music_credits: str = field(default_factory=lambda: _env("MUSIC_CREDITS", ""))
 
     # FusionBrain / Kandinsky (legacy fallback на случай если FAL ляжет)
     fusionbrain_api_key: str = field(default_factory=lambda: _env("FUSIONBRAIN_API_KEY", ""))

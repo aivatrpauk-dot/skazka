@@ -667,100 +667,6 @@ async def cmd_export_csv(message: Message, command: CommandObject) -> None:
 
 
 # ============================================================================
-# /generate_ambient <N> — генерация пула фоновых треков через Suno
-# /list_ambient        — посмотреть какие треки в пуле
-# /clear_ambient       — удалить весь пул (для regen с нуля)
-# ============================================================================
-
-@router.message(Command("generate_ambient"))
-async def cmd_generate_ambient(message: Message, command: CommandObject) -> None:
-    """Генерирует N фоновых инструментальных треков через Suno V5 (kie.ai)
-    и сохраняет в cache/ambient/. Каждый запрос Suno даёт 2 клипа,
-    то есть реальный размер пула ~= N × 2.
-
-    Пример: /generate_ambient 15 → ~30 треков в пуле, ~165 ₽ разово."""
-    if not _is_admin(message.from_user.id):
-        return
-    raw = (command.args or "").strip()
-    if not raw or not raw.isdigit():
-        await message.answer(
-            "Использование: <code>/generate_ambient N</code>\n\n"
-            "Например: <code>/generate_ambient 15</code> — Suno сгенерит 15 запросов "
-            "по ~2 трека = ~30 mp3 в пуле. Стоимость ~165 ₽ разово.\n\n"
-            "Каждый трек ~2-3 минуты, инструментальная колыбельная "
-            "(piano/music box/harp). Сохраняется в cache/ambient/, "
-            "используется случайно при микшировании сказок."
-        )
-        return
-    n = int(raw)
-    if n < 1 or n > 50:
-        await message.answer("N должно быть от 1 до 50.")
-        return
-
-    from ..services.bg_music import generate_bg_pool
-
-    await message.answer(
-        f"🎵 Запускаю генерацию {n} запросов Suno V5 "
-        f"(~{n*2} треков в пуле).\n\n"
-        f"Это займёт ~{n} минут (последовательно, чтоб не упереться в "
-        f"rate-limit kie.ai). Можно не ждать — сообщу когда закончу."
-    )
-
-    try:
-        succeeded, failed = await generate_bg_pool(n)
-        await message.answer(
-            f"✅ Готово.\n"
-            f"Успешных запросов: <b>{succeeded}</b>\n"
-            f"Ошибок: <b>{failed}</b>\n\n"
-            f"Посмотреть пул: /list_ambient"
-        )
-    except Exception as e:
-        logger.exception("generate_bg_pool failed")
-        await message.answer(f"❌ Ошибка: {e}")
-
-
-@router.message(Command("list_ambient"))
-async def cmd_list_ambient(message: Message) -> None:
-    """Список всех файлов в cache/ambient/."""
-    if not _is_admin(message.from_user.id):
-        return
-    from ..services.bg_music import list_bg_tracks
-
-    tracks = list_bg_tracks()
-    if not tracks:
-        await message.answer(
-            "Пул пустой. Сгенерируй через "
-            "<code>/generate_ambient 15</code>."
-        )
-        return
-    lines = [f"🎵 <b>В пуле {len(tracks)} треков:</b>\n"]
-    total_size = 0
-    for p in tracks[:50]:
-        size_kb = p.stat().st_size / 1024
-        total_size += size_kb
-        lines.append(f"  • {p.name} ({size_kb:.0f} КБ)")
-    if len(tracks) > 50:
-        lines.append(f"  … и ещё {len(tracks) - 50}")
-    lines.append(f"\n<b>Общий размер:</b> {total_size/1024:.1f} МБ")
-    await message.answer("\n".join(lines))
-
-
-@router.message(Command("clear_ambient"))
-async def cmd_clear_ambient(message: Message) -> None:
-    """Удалить все треки из пула. Используется перед regen."""
-    if not _is_admin(message.from_user.id):
-        return
-    from ..services.bg_music import clear_bg_pool
-
-    deleted = clear_bg_pool()
-    await message.answer(
-        f"🗑 Удалено треков: <b>{deleted}</b>\n\n"
-        f"Теперь сгенерируй новые через "
-        f"<code>/generate_ambient 15</code>."
-    )
-
-
-# ============================================================================
 # /feedback — посмотреть критику от юзеров
 # ============================================================================
 
@@ -1006,9 +912,6 @@ async def cmd_admin_help(message: Message) -> None:
         "<code>/partner_link CODE</code> — deep-link для размещения\n"
         "<code>/partner_payout CODE METHOD [REF]</code> — пометить pending как выплаченные\n"
         "<code>/seed_partners</code> — посеять тестовых партнёров\n\n"
-        "<b>🎵 Фоновая музыка (legacy, музыку выпилили)</b>\n"
-        "<code>/generate_ambient N</code>, <code>/list_ambient</code>, <code>/clear_ambient</code> — "
-        "оставлены на случай возврата к озвучке. В новом flow PDF без музыки.\n\n"
         "<i>Все команды видишь только ты (по списку ADMIN_IDS в .env). "
         "Обычный юзер их не видит и не может выполнить.</i>"
     )

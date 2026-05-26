@@ -3,8 +3,8 @@
 
 После оплаты бот:
 1. Генерирует сказку с использованием SYSTEM_GIFT_STORYTELLER
-2. Озвучивает её через ElevenLabs
-3. Рисует обложку через FAL/FusionBrain
+2. Рисует 3 иллюстрации через Recraft (как в основном флоу)
+3. Собирает PDF-книжку
 4. Шлёт всё ПОКУПАТЕЛЮ (а не получателю) — покупатель перешлёт другу сам через Telegram
 
 Параметры подарка временно хранятся в module-level dict, потому что между invoice
@@ -29,11 +29,10 @@ from ..keyboards import age_kb, hero_kb, main_menu_kb, theme_kb
 from ..prompts import THEME_CHOICES
 from ..services import (
     create_gift_invoice,
-    extract_scene,
-    generate_cover,
     generate_gift_story,
-    synthesize_speech,
 )
+from ..services.image import generate_three_illustrations
+from ..services.pdf_book import build_story_pdf
 from ..states import GiftWizard
 from ..utils import (
     accusative,
@@ -238,48 +237,73 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
         )
         return
 
-    # Параллельно — озвучка и обложка
-    audio_task = asyncio.create_task(synthesize_speech(text))
-    scene_task = asyncio.create_task(extract_scene(text))
+    # Параллельно с подготовкой шапки и текста — генерим 3 иллюстрации.
+    # gift-сказка идёт через SYSTEM_GIFT_STORYTELLER, который не выдаёт
+    # ---SCENES---блок (он только в основном сказочнике), поэтому
+    # передаём scenes=None — generate_three_illustrations отрендерит
+    # три картинки по stage-промптам без сюжетной привязки.
+    illustrations_task = asyncio.create_task(
+        generate_three_illustrations(
+            params["hero"], params["theme_key"], scenes=None,
+        )
+    )
 
     # Шапка для пересылки близким
     await bot.send_message(
         chat_id,
         f"🎁 <b>Сказка в подарок для {params['recipient_name']} готова</b>\n\n"
-        "Перешлите всё ниже близким — текст, картинку и аудио — обычной пересылкой в Telegram.",
+        "Перешлите всё ниже близким — текст, картинку и PDF-книжку — обычной пересылкой в Telegram.",
     )
 
-    # 1) Картинка
-    try:
-        scene = await scene_task
-    except Exception:
-        scene = None
-    try:
-        img = await generate_cover(params["hero"], params["theme_key"], scene_description=scene)
-        if isinstance(img, Path):
-            await bot.send_photo(chat_id, FSInputFile(str(img)))
-    except Exception as e:
-        logger.warning("Подарочная картинка не вышла: %s", e)
-
-    # 2) Текст — отдаём БЕЗ эмо-маркеров (они только для озвучки)
+    # Текст — отдаём БЕЗ эмо-маркеров (они были для озвучки в старом флоу,
+    # теперь не используются, но llm.py их всё ещё может оставлять в выводе).
     from .story import _split_for_telegram
     from ..utils import strip_emo_markers
     display_text = strip_emo_markers(text)
+
+    # Ждём картинки
+    try:
+        illustrations = await illustrations_task
+    except Exception as e:
+        logger.warning("Подарочные иллюстрации не вышли: %s", e)
+        illustrations = {"opening": None, "climax": None, "ending": None}
+
+    cover_path = illustrations.get("opening")
+
+    # 1) Обложка как превью — сразу видно "что это"
+    if cover_path and cover_path.exists():
+        try:
+            await bot.send_photo(chat_id, FSInputFile(str(cover_path)))
+        except Exception as e:
+            logger.warning("Подарочная обложка не отправилась: %s", e)
+
+    # 2) Текст частями
     for part in _split_for_telegram(display_text):
         await bot.send_message(chat_id, part)
 
-    # 3) Аудио
+    # 3) PDF-книжка
+    book_title = f"Сказка для {genitive(params['recipient_name'])}"
     try:
-        audio = await audio_task
-        if isinstance(audio, Path):
-            await bot.send_audio(
+        theme_phrase = THEME_CHOICES[params["theme_key"]][2] if params.get("theme_key") else ""
+    except (KeyError, IndexError):
+        theme_phrase = ""
+    try:
+        pdf_path = build_story_pdf(
+            title=book_title,
+            subtitle=theme_phrase,
+            text=display_text,
+            cover_image=cover_path,
+            climax_image=illustrations.get("climax"),
+            ending_image=illustrations.get("ending"),
+        )
+        if pdf_path and pdf_path.exists():
+            await bot.send_document(
                 chat_id,
-                FSInputFile(str(audio)),
-                title=f"Сказка для {genitive(params['recipient_name'])}",
-                performer=config.bot_brand,
+                FSInputFile(str(pdf_path), filename=f"{book_title}.pdf"),
+                caption=f"📖 Сказка для {genitive(params['recipient_name'])}",
             )
     except Exception as e:
-        logger.warning("Подарочное аудио не вышло: %s", e)
+        logger.exception("Подарочный PDF не собрался: %s", e)
 
     # Сохраняем в архив покупателя как gift
     async with Session() as s:
@@ -294,6 +318,8 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
                 length="medium",
                 # В БД сохраняем уже без маркеров (для /library)
                 text=display_text,
+                # Кладём обложку, чтобы share-флоу мог переотправить картинку.
+                image_path=str(cover_path) if cover_path else None,
                 is_paid_quality=True,
                 is_gift=True,
                 gift_recipient_name=params["recipient_name"],
@@ -333,7 +359,7 @@ async def cb_gift_share(call: CallbackQuery) -> None:
     await call.message.answer(
         f"🎁 <b>Перешлите эту сказку близким</b>\n\n"
         "Удерживайте каждое сообщение ниже → «Переслать» → выберите чат. "
-        "Картинка, текст и аудио — всё в одной сказке."
+        "Картинка и текст — всё в одной сказке."
     )
     if st.image_path:
         try:
@@ -341,11 +367,3 @@ async def cb_gift_share(call: CallbackQuery) -> None:
         except Exception:
             pass
     await call.message.answer(st.text)
-    if st.audio_path:
-        try:
-            await call.message.answer_audio(
-                FSInputFile(st.audio_path),
-                title=f"Сказка для {genitive(st.child_name)}",
-            )
-        except Exception:
-            pass

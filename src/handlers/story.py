@@ -25,12 +25,11 @@ from ..keyboards import (
 )
 from ..prompts import HERO_QUICK_PICKS, THEME_CHOICES
 from ..services import (
-    extract_scene,
-    generate_cover,
     generate_story,
-    synthesize_speech,
     # summarize_story больше не используется — он был для антологии-продолжения,
     # которая теперь удалена (см. cb_story_continue).
+    # extract_scene/generate_cover/synthesize_speech удалены вместе с TTS-флоу
+    # (см. _run_generation: бот выдаёт только PDF, без озвучки).
 )
 from ..states import StoryWizard
 from ..utils import (
@@ -685,159 +684,95 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         )
         await s.commit()
 
-    # ─────────────────── Новый flow (USE_TTS=false): PDF-книжка + ambient ───────────────────
-    # Стандартный путь после рефакторинга: бот НЕ читает сказку голосом —
-    # делает PDF-книжку с 3 иллюстрациями и прикладывает фоновую музыку.
-    # Родитель сам читает ребёнку под музыку.
-    #
-    # Старый flow с TTS-озвучкой включается через USE_TTS=true в .env
-    # (оставлен для тестов / будущего возврата к озвучке).
+    # ─────────────────── PDF-флоу ───────────────────
+    # Бот НЕ читает сказку голосом — делает PDF-книжку с 3 иллюстрациями.
+    # Родитель сам читает ребёнку перед сном. TTS-озвучка и legacy USE_TTS=true
+    # удалены вместе с tts.py и bg_music.py (см. git история, май 2026).
     from ..prompts import THEME_CHOICES
     from ..services.image import generate_three_illustrations
     from ..services.pdf_book import build_story_pdf
-    from ..utils import accusative as _acc, genitive as _gen, hero_accusative as _hero_acc
+    from ..utils import genitive as _gen
 
-    audio_path: Path | None = None
-    image_path: Path | None = None  # для совместимости с БД (Story.image_path)
+    image_path: Path | None = None  # путь к обложке для Story.image_path
     display_text = strip_emo_markers(text)
 
-    # Заголовок книжки. Раньше формировался из имени + героя + темы:
-    # «Сказка про Машу и робота Мику, о настоящей смелости». Но с новой
-    # моделью (сказочник сам выбирает героя и тему) у нас этих параметров
-    # нет — поэтому заголовок становится простым «Ночная сказка для Маши».
+    # Заголовок книжки. Приоритет: название, которое сказочник придумал сам
+    # (приходит из generate_story, парсится из второй строки в «ёлочках»).
+    # Если сказочник название не дал — fallback на общий «Сказка для X».
     try:
         title_phrase = THEME_CHOICES[data["theme_key"]][2] if data.get("theme_key") else ""
     except (KeyError, IndexError):
         title_phrase = ""
-    # Заголовок книжки. Приоритет: название, которое сказочник придумал сам
-    # (приходит из generate_story, парсится из второй строки в «ёлочках»).
-    # Если сказочник название не дал — fallback на общий «Сказка для X».
     if story_title:
         book_title = story_title
     else:
         book_title = f"Сказка для {_gen(data['child_name'])}"
     book_subtitle = title_phrase
 
-    if not config.use_tts:
-        # ─── 3 иллюстрации ───
-        # Сцены приходят из generate_story (сказочник сам их выдал в
-        # блоке ---SCENES--- по нашей инструкции в _SCENE_BLOCK_INSTRUCTIONS).
-        # Раньше тут был отдельный вызов extract_three_scenes к Gemini —
-        # выключили: один API вместо двух, сказочник лучше знает мир,
-        # который только что написал. Если scenes=None (сказочник забыл
-        # блок или JSON битый) — generate_three_illustrations нарисует
-        # без сюжетного мотива, чисто по stage-промптам.
-        await bot.send_chat_action(call.message.chat.id, "upload_photo")
-        illustrations = await generate_three_illustrations(
-            data["hero"], data["theme_key"], scenes=scenes,
-        )
+    # ─── 3 иллюстрации ───
+    # Сцены приходят из generate_story (сказочник сам их выдал в
+    # блоке ---SCENES--- по нашей инструкции в _SCENE_BLOCK_INSTRUCTIONS).
+    # Раньше тут был отдельный вызов extract_three_scenes к Gemini —
+    # выключили: один API вместо двух, сказочник лучше знает мир,
+    # который только что написал. Если scenes=None (сказочник забыл
+    # блок или JSON битый) — generate_three_illustrations нарисует
+    # без сюжетного мотива, чисто по stage-промптам.
+    await bot.send_chat_action(call.message.chat.id, "upload_photo")
+    illustrations = await generate_three_illustrations(
+        data["hero"], data["theme_key"], scenes=scenes,
+    )
 
-        # Собираем PDF
+    # Собираем PDF
+    try:
+        pdf_path = build_story_pdf(
+            title=book_title,
+            subtitle=book_subtitle,
+            text=display_text,
+            cover_image=illustrations.get("opening"),
+            climax_image=illustrations.get("climax"),
+            ending_image=illustrations.get("ending"),
+        )
+    except Exception as e:
+        logger.exception("PDF build failed: %s", e)
+        pdf_path = None
+
+    # Для сохранения в БД — путь к обложке (Story.image_path остаётся в схеме)
+    cover_path = illustrations.get("opening")
+    if cover_path:
+        image_path = cover_path
+
+    # Сначала отправляем обложку как красивое превью
+    if cover_path and cover_path.exists():
         try:
-            pdf_path = build_story_pdf(
-                title=book_title,
-                subtitle=book_subtitle,
-                text=display_text,
-                cover_image=illustrations.get("opening"),
-                climax_image=illustrations.get("climax"),
-                ending_image=illustrations.get("ending"),
+            await call.message.answer_photo(FSInputFile(str(cover_path)))
+        except Exception as e:
+            logger.warning("Cover send failed: %s", e)
+
+    # Затем PDF-книжку
+    if pdf_path and pdf_path.exists():
+        try:
+            # Имя файла для юзера в Telegram — название самой сказки
+            # (то, что сказочник пишет первой строкой, парсится в
+            # parse_story_title). Если по какой-то причине названия
+            # нет — fallback на «{ребёнок} & {герой}». Санитизируем
+            # символы, которые ломают filesystem или Telegram-клиента.
+            _raw_title = (story_title or "").strip()
+            if _raw_title:
+                # Убираем символы, недопустимые в именах файлов на
+                # Windows/Mac/Linux: / \ : * ? " < > | + перенос строк.
+                import re as _re_fn
+                _safe = _re_fn.sub(r'[/\\:*?"<>|\r\n\t]', "-", _raw_title)
+                # Обрезаем по 80 символов с запасом под расширение
+                _safe = _safe.strip(" .-")[:80] or "Сказка"
+                safe_name = f"{_safe}.pdf"
+            else:
+                safe_name = f"{data['child_name']} & {data['hero']}.pdf".replace("/", "-")
+            await call.message.answer_document(
+                FSInputFile(str(pdf_path), filename=safe_name),
+                caption=f"📖 Сказка на сегодня для {_gen(data['child_name'])}",
             )
         except Exception as e:
-            logger.exception("PDF build failed: %s", e)
-            pdf_path = None
-
-        # Для сохранения в БД — путь к обложке (Story.image_path остаётся в схеме)
-        cover_path = illustrations.get("opening")
-        if cover_path:
-            image_path = cover_path
-
-        # Сначала отправляем обложку как красивое превью
-        if cover_path and cover_path.exists():
-            try:
-                await call.message.answer_photo(FSInputFile(str(cover_path)))
-            except Exception as e:
-                logger.warning("Cover send failed: %s", e)
-
-        # Затем PDF-книжку
-        if pdf_path and pdf_path.exists():
-            try:
-                # Имя файла для юзера в Telegram — название самой сказки
-                # (то, что сказочник пишет первой строкой, парсится в
-                # parse_story_title). Если по какой-то причине названия
-                # нет — fallback на «{ребёнок} & {герой}». Санитизируем
-                # символы, которые ломают filesystem или Telegram-клиента.
-                _raw_title = (story_title or "").strip()
-                if _raw_title:
-                    # Убираем символы, недопустимые в именах файлов на
-                    # Windows/Mac/Linux: / \ : * ? " < > | + перенос строк.
-                    import re as _re_fn
-                    _safe = _re_fn.sub(r'[/\\:*?"<>|\r\n\t]', "-", _raw_title)
-                    # Обрезаем по 80 символов с запасом под расширение
-                    _safe = _safe.strip(" .-")[:80] or "Сказка"
-                    safe_name = f"{_safe}.pdf"
-                else:
-                    safe_name = f"{data['child_name']} & {data['hero']}.pdf".replace("/", "-")
-                await call.message.answer_document(
-                    FSInputFile(str(pdf_path), filename=safe_name),
-                    caption=f"📖 Сказка на сегодня для {_gen(data['child_name'])}",
-                )
-            except Exception as e:
-                logger.exception("PDF send failed: %s", e)
-
-    else:
-        # ─────────────────── Legacy flow (USE_TTS=true): озвучка как раньше ───────────────────
-        scene_task = asyncio.create_task(extract_scene(text)) if full_quality else None
-        audio_task = asyncio.create_task(synthesize_speech(text)) if full_quality else None
-
-        if full_quality:
-            scene = None
-            if scene_task:
-                try:
-                    scene = await scene_task
-                except Exception as e:
-                    logger.warning("scene_task failed: %s", e)
-            image_task = asyncio.create_task(
-                generate_cover(data["hero"], data["theme_key"], scene_description=scene)
-            )
-            await bot.send_chat_action(call.message.chat.id, "upload_photo")
-            try:
-                res = await image_task
-                if isinstance(res, Path):
-                    image_path = res
-                    await call.message.answer_photo(FSInputFile(str(image_path)))
-            except Exception as e:
-                logger.warning("Картинка не сгенерилась: %s", e)
-
-        await bot.send_chat_action(call.message.chat.id, "typing")
-        for part in _split_for_telegram(display_text):
-            await call.message.answer(part)
-
-        if audio_task:
-            status_msg = None
-            if not audio_task.done():
-                try:
-                    status_msg = await call.message.answer(
-                        "🎙 <i>Дописываю голос рассказчика — ещё несколько секунд…</i>"
-                    )
-                except Exception as e:
-                    logger.debug("status msg failed: %s", e)
-            await bot.send_chat_action(call.message.chat.id, "upload_voice")
-            try:
-                res = await audio_task
-                if isinstance(res, Path):
-                    audio_path = res
-                    if status_msg:
-                        try:
-                            await status_msg.delete()
-                        except Exception:
-                            pass
-                    await call.message.answer_audio(
-                        FSInputFile(str(audio_path)),
-                        title=f"Сказка для {genitive(data['child_name'])}",
-                        performer=config.bot_brand,
-                    )
-            except Exception as e:
-                logger.warning("Аудио не сгенерилось: %s", e)
+            logger.exception("PDF send failed: %s", e)
 
     # Сохраняем сказку в БД, обновляем счётчики.
     # Колонка next_episode_teaser больше не используется (модель антологии вместо
@@ -868,10 +803,10 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
             theme=data["theme_key"],
             length=length,
             # В БД сохраняем «чистый» текст, без эмо-маркеров — он используется
-            # для /library и как summary-контекст для следующих сказок. Аудио
-            # уже создано с маркерами выше, повторно генерить не нужно.
+            # для /library как читаемая копия сказки.
             text=display_text,
-            audio_path=str(audio_path) if audio_path else None,
+            # Story.audio_path остался в схеме БД для совместимости со старыми
+            # записями (когда был TTS-флоу). Новые сказки всегда без аудио.
             image_path=str(image_path) if image_path else None,
             pdf_path=str(pdf_path) if pdf_path else None,
             is_paid_quality=full_quality,

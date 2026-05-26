@@ -1,10 +1,12 @@
 from .llm import (
     generate_story,
     generate_gift_story,
-    extract_scene,
     summarize_story,
 )
-from .tts import synthesize_speech
+# extract_scene удалён из экспортов вместе с TTS-флоу — его использовала
+# только legacy ветка USE_TTS=true и старый gift-флоу с озвучкой.
+# Сама функция пока остаётся в llm.py (легко удалить позже отдельным
+# проходом «выпил мёртвых функций»).
 from .image import generate_cover
 from .billing import (
     # Новые тарифы:
@@ -35,9 +37,7 @@ from .rate_limit import check_story_limit, reset_user_limits
 __all__ = [
     "generate_story",
     "generate_gift_story",
-    "extract_scene",
     "summarize_story",
-    "synthesize_speech",
     "generate_cover",
     "create_single_invoice",
     "create_pack_invoice",
