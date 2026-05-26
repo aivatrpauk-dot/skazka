@@ -248,15 +248,46 @@ async def _get_user_child_names(user_id: int) -> list[str]:
     return names
 
 
+# «Сутки сказки» — это не календарные сутки от 00:00 до 24:00, а
+# окно от 08:00 МСК одного дня до 08:00 МСК следующего. Так лимит
+# «одна сказка на ребёнка в сутки» гарантированно сбрасывается ДО
+# того, как родитель проснулся (с учётом часовых поясов от UTC-3
+# до UTC+11). До 08:00 МСК ночь ещё считается «вчерашним вечером».
+import datetime as _dt
+_MSK_TZ = _dt.timezone(_dt.timedelta(hours=3))
+STORY_DAY_RESET_HOUR_MSK = 8
+
+
+def _story_day(utc_dt: _dt.datetime) -> _dt.date:
+    """Возвращает дату «сказочных суток» для момента времени в UTC.
+
+    Сдвигаем МСК назад на RESET_HOUR — тогда «полночь сказочных суток»
+    совпадает с 08:00 МСК календарных. Две сказки в один story_day =
+    та же «ночь сказки».
+    """
+    msk = utc_dt.astimezone(_MSK_TZ)
+    shifted = msk - _dt.timedelta(hours=STORY_DAY_RESET_HOUR_MSK)
+    return shifted.date()
+
+
 async def _was_story_for_child_today(user_id: int, child_name: str) -> bool:
     """Возвращает True, если у юзера УЖЕ была сказка для ЭТОГО ребёнка
-    сегодня (по МСК). Дата сравнивается по МСК-календарю, не по часам.
+    в текущих «сказочных сутках» (с 08:00 МСК до 08:00 МСК следующего дня).
 
-    Это новая логика daily-лимита: лимит 1/день привязан к ИМЕНИ ребёнка,
-    а не к юзеру в целом. Поэтому родитель с двумя детьми (Маша и Ваня)
-    может сделать одну сказку для Маши и одну для Вани в один день.
+    Лимит 1/сутки привязан к ИМЕНИ ребёнка, а не к юзеру в целом.
+    Родитель с двумя детьми (Маша и Ваня) может сделать одну сказку
+    для Маши и одну для Вани в одни сутки.
+
+    Сброс в 08:00 МСК (не в полночь) — потому что:
+    1. У родителей разные часовые пояса. Полуночный сброс в МСК для
+       Владивостока — это 07:00 утра, и человек, проснувшись в 7:30,
+       уже не может «вчерашнюю» сказку для того же ребёнка. Дома же
+       в МСК полуночный сброс ловит тех, кто читает ребёнку поздно
+       (23:50 → ждёт 10 минут → может ещё одну, абсурд).
+    2. 08:00 МСК = диапазон от 07:00 (Калининград UTC+2) до 16:00
+       (Камчатка UTC+12). Все эти зоны спят, никто не делает сказки.
+       К пробуждению лимит точно сброшен.
     """
-    import datetime as _dt
     async with Session() as s:
         last = (await s.execute(
             select(Story.created_at)
@@ -266,10 +297,9 @@ async def _was_story_for_child_today(user_id: int, child_name: str) -> bool:
         )).scalar_one_or_none()
     if not last:
         return False
-    MSK_TZ = _dt.timezone(_dt.timedelta(hours=3))
-    now_msk = _dt.datetime.now(_dt.timezone.utc).astimezone(MSK_TZ).date()
-    last_msk = last.astimezone(MSK_TZ).date()
-    return last_msk == now_msk
+    now_day = _story_day(_dt.datetime.now(_dt.timezone.utc))
+    last_day = _story_day(last)
+    return last_day == now_day
 
 
 async def _names_used_today(user_id: int, names: list[str]) -> set[str]:
