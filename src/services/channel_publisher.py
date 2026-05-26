@@ -31,7 +31,7 @@ from aiogram.types import FSInputFile
 from ..config import config
 from ..prompts import THEME_CHOICES
 from .image import generate_cover
-from .llm import generate_story
+from .llm import extract_scene, generate_story
 from .pdf_book import build_story_pdf
 from .story_params import pick_params
 
@@ -209,18 +209,27 @@ async def publish_to_channel(bot: Bot, *, force: bool = False) -> bool:
         from ..utils import strip_emo_markers
         display_text = strip_emo_markers(text)
 
-        # 3. Одна обложка — экономия. Берём opening-сцену если она есть.
-        opening_scene = (scenes or {}).get("opening") if scenes else None
+        # 3. Одна обложка — экономия. Сцена берётся НЕ из SCENES-блока
+        # (он по нашей инструкции содержит «параллельный мир сказки»,
+        # т.е. что ЕЩЁ могло бы там происходить — это даёт шаблонные
+        # картинки про обитателей мира на пикнике), а через extract_scene:
+        # отдельный Gemini-вызов, который читает текст сказки и
+        # формулирует конкретную визуально-сильную сцену из НЕЁ.
+        # Так обложка отражает сам сюжет, а не выдуманный мир вокруг.
+        story_scene = await extract_scene(display_text)
+        if not story_scene:
+            # Fallback: если Gemini-ключ не настроен или extract_scene
+            # упал — используем opening из SCENES-блока (старое поведение).
+            story_scene = (scenes or {}).get("opening") if scenes else None
+
         # theme_key и hero не критичны для канальной обложки — наш
         # стиль уже всё определяет. Передаём пустую строку для hero
-        # (generate_cover это допускает) и фиктивный theme_key из
-        # имеющихся (любой подойдёт — он влияет только на цветовой
-        # акцент в анти-промпте).
+        # и фиктивный theme_key из имеющихся.
         theme_key = random.choice(list(THEME_CHOICES.keys()))
         cover_path = await generate_cover(
             hero="",
             theme_key=theme_key,
-            scene_description=opening_scene,
+            scene_description=story_scene,
             stage="opening",
         )
 
