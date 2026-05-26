@@ -116,6 +116,21 @@ class Config:
     fusionbrain_api_key: str = field(default_factory=lambda: _env("FUSIONBRAIN_API_KEY", ""))
     fusionbrain_secret_key: str = field(default_factory=lambda: _env("FUSIONBRAIN_SECRET_KEY", ""))
 
+    # ─────────────── Канальная воронка (демонстрация продукта) ───────────────
+    # Каждый день в 18:00 МСК бот публикует в указанный канал одну сказку
+    # с одной обложкой и PDF — как пример своих возможностей. Каждый 3-й
+    # пост содержит CTA-ссылку на сам бот для персонализированной сказки.
+    # Включается флагом CHANNEL_PUBLISH_ENABLED; если выключено — scheduler
+    # просто не стартует.
+    channel_publish_enabled: bool = field(default_factory=lambda: _bool("CHANNEL_PUBLISH_ENABLED", False))
+    # Канал куда постим. Формат: @username (для публичного) или -100... (для приватного).
+    # Бот должен быть админом канала с правом «отправлять сообщения».
+    channel_id: str = field(default_factory=lambda: _env("CHANNEL_ID", ""))
+    # Каждый N-й пост содержит CTA. По умолчанию каждый 3-й.
+    channel_cta_every_n: int = field(default_factory=lambda: _int("CHANNEL_CTA_EVERY_N", 3))
+    # Час публикации по МСК. Дефолт 18:00.
+    channel_publish_hour_msk: int = field(default_factory=lambda: _int("CHANNEL_PUBLISH_HOUR_MSK", 18))
+
     # БД
     db_url: str = field(default_factory=lambda: _env("DB_URL", "postgresql+asyncpg://skazka:skazka@db:5432/skazka"))
 

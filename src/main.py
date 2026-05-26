@@ -167,6 +167,39 @@ async def main() -> None:
     asyncio.create_task(renewal_worker(bot))
     asyncio.create_task(cache_cleaner_worker())
 
+    # Канальный планировщик: каждый день в CHANNEL_PUBLISH_HOUR_MSK
+    # публикуем демо-сказку в @канал — воронка продаж. Поднимается
+    # только если CHANNEL_PUBLISH_ENABLED=true в .env.
+    if config.channel_publish_enabled and config.channel_id:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from .services.channel_publisher import (
+            publish_to_channel,
+            maybe_publish_on_startup,
+        )
+
+        msk_tz = dt.timezone(dt.timedelta(hours=3))
+        scheduler = AsyncIOScheduler(timezone=msk_tz)
+        scheduler.add_job(
+            publish_to_channel,
+            CronTrigger(
+                hour=config.channel_publish_hour_msk,
+                minute=0,
+                timezone=msk_tz,
+            ),
+            args=[bot],
+            id="channel_daily_publish",
+            misfire_grace_time=3600,  # если опоздали на час — всё равно постим
+            coalesce=True,            # один пост за миссфайр, не серия
+        )
+        scheduler.start()
+        logger.info(
+            "Channel scheduler started: ежедневно в %02d:00 МСК → %s",
+            config.channel_publish_hour_msk, config.channel_id,
+        )
+        # На случай если бот лежал в 18:00 — публикуем сейчас если нужно.
+        asyncio.create_task(maybe_publish_on_startup(bot))
+
     # Основной polling-цикл с авто-восстановлением.
     # aiogram сам ретраит сетевые ошибки внутри long-polling, но если что-то
     # совсем экстремальное (например, токен временно отвалился, прокси упал) —

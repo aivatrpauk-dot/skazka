@@ -17,3 +17,6 @@ sentry-sdk==2.18.0
 petrovich>=1.0,<2
 pymorphy3>=2.0,<3
 pymorphy3-dicts-ru
+# APScheduler — для ежедневной публикации сказки в канал в 18:00 МСК.
+# AsyncIOScheduler работает в том же event loop что и aiogram.
+apscheduler>=3.10,<4
