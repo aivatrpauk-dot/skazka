@@ -99,20 +99,6 @@ def _has_active_subscription(u: User) -> bool:
 _is_paid = _has_active_subscription
 
 
-# Глобальный per-user cooldown (legacy). РЕАЛЬНЫЙ лимит «1 сказка в день
-# на ребёнка» применяется per-child через _was_story_for_child_today()
-# в _run_generation (см. ниже). Этот cooldown остаётся как доп. защита
-# от спама для pack/sub источников (юзер с подпиской без явного имени).
-DAILY_LIMIT_HOURS = 20  # с запасом ~24ч, чтоб ребёнок мог получить «вечером»
-
-
-def _is_within_daily_cooldown(u: User) -> bool:
-    if not u.last_story_at:
-        return False
-    elapsed = dt.datetime.now(dt.timezone.utc) - u.last_story_at
-    return elapsed < dt.timedelta(hours=DAILY_LIMIT_HOURS)
-
-
 # Источники, из которых юзер может «оплатить» сегодняшнюю сказку.
 # Порядок проверки = порядок списания (от дешёвого/халявного к дорогому).
 SOURCE_BONUS = "bonus"
@@ -130,19 +116,26 @@ def _allowed_source(u: User) -> str | None:
     None — значит нет источника (нужен paywall).
 
     ВАЖНО: эта функция отвечает только за «есть ли чем заплатить», не за
-    «можно ли сегодня для этого ребёнка». Per-child лимит «1 в день на
-    ребёнка» проверяется отдельно через _was_story_for_child_today() в
-    _run_generation, после того как известно имя ребёнка. Этот лимит
-    применяется ко ВСЕМ источникам кроме админа — single тоже не
-    позволит сделать 2 сказки одному ребёнку за день.
+    «можно ли сегодня для этого ребёнка». Per-child лимит «1 в сутки на
+    ребёнка» (сброс в 08:00 МСК) проверяется отдельно через
+    _was_story_for_child_today() в _run_generation, после того как
+    известно имя ребёнка. Этот лимит применяется ко ВСЕМ источникам
+    кроме админа — single тоже не позволит сделать 2 сказки одному
+    ребёнку за сутки.
+
+    Старого глобального 20-часового cooldown (_is_within_daily_cooldown)
+    больше нет — он стал избыточен после введения per-child лимита, плюс
+    мешал в кейсах «родитель ждал 4 часа хотя уже наступили новые
+    сказочные сутки в 08:00 МСК». Per-child + 8-часовой сброс — этого
+    достаточно для всех бизнес-сценариев.
 
     Логика выбора источника (от халявного к дорогому):
       0. Админ → SOURCE_ADMIN (обходит всё, включая per-child).
       1. Бонусные сказки (от рефералки/feedback).
       2. Free trial первая сказка.
       3. Single-разовая покупка.
-      4. Pack (если global per-user cooldown не активен).
-      5. Subscription active (если global per-user cooldown не активен).
+      4. Pack.
+      5. Subscription active.
     """
     if u.telegram_id in config.admin_ids:
         return SOURCE_ADMIN
@@ -152,9 +145,6 @@ def _allowed_source(u: User) -> str | None:
         return SOURCE_FREE
     if u.single_stories_remaining and u.single_stories_remaining > 0:
         return SOURCE_SINGLE
-    # Дальше — источники с daily-лимитом
-    if _is_within_daily_cooldown(u):
-        return None
     if u.pack_stories_remaining and u.pack_stories_remaining > 0:
         return SOURCE_PACK
     if _has_active_subscription(u):
@@ -171,13 +161,14 @@ def _consume_story_source(u: User, source: str) -> None:
     """Списывает сказку с указанного источника. Вызывается ВНУТРИ сессии,
     после успешной генерации, перед commit().
 
-    Также проставляет last_story_at для источников с daily-лимитом.
-    Для SOURCE_ADMIN — ничего не списывается и last_story_at не ставится
-    (админ может тестировать неограниченно).
+    last_story_at заполняется для всех платных источников как
+    аналитический след (используется в /user_info и дашбордах).
+    Блокирующей роли больше не несёт — главный лимит работает per-child
+    через _was_story_for_child_today (сброс в 08:00 МСК).
+    Для SOURCE_ADMIN — ничего не списывается и last_story_at не ставится.
     """
     now = dt.datetime.now(dt.timezone.utc)
     if source == SOURCE_ADMIN:
-        # Админский обход — ничего не трогаем.
         return
     if source == SOURCE_BONUS:
         u.bonus_stories = max(0, (u.bonus_stories or 0) - 1)
@@ -187,23 +178,18 @@ def _consume_story_source(u: User, source: str) -> None:
         u.single_stories_remaining = max(0, (u.single_stories_remaining or 0) - 1)
     elif source == SOURCE_PACK:
         u.pack_stories_remaining = max(0, (u.pack_stories_remaining or 0) - 1)
-        u.last_story_at = now
-    elif source == SOURCE_SUBSCRIPTION:
-        u.last_story_at = now
+    u.last_story_at = now
 
 
 def _paywall_reason_text(u: User) -> str:
-    """Что показать юзеру когда _allowed_source вернул None."""
-    if _is_within_daily_cooldown(u) and (
-        u.pack_stories_remaining or _has_active_subscription(u)
-    ):
-        # Не закончились сказки, просто рано
-        next_at = u.last_story_at + dt.timedelta(hours=DAILY_LIMIT_HOURS)
-        return (
-            "🌙 Сегодняшняя сказка уже сложена — её достаточно на этот вечер.\n"
-            f"Следующая будет ждать Вас <b>{next_at.strftime('%d.%m в %H:%M')}</b>.\n\n"
-            "Пока — просто побудьте рядом. Этого тоже хватит."
-        )
+    """Что показать юзеру когда _allowed_source вернул None.
+
+    После убирания глобального 20h-cooldown эта функция вызывается
+    в одном сценарии: у юзера РЕАЛЬНО закончились все источники
+    (free + single + pack + sub). Per-child лимит здесь не при чём —
+    он обрабатывается отдельным сообщением в _run_generation.
+    """
+    _ = u  # пока не используется, но оставляем сигнатуру для расширения
     return (
         "🕯 Сказка, что была подарена Вам для знакомства, уже отзвучала. "
         "Чтобы наш вечерний ритуал не прерывался — выберите, что Вам "
@@ -859,7 +845,8 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     async with Session() as s:
         u_db = (await s.execute(select(User).where(User.telegram_id == call.from_user.id))).scalar_one()
         # Списываем из источника, который мы определили перед генерацией.
-        # _consume_story_source проставит last_story_at там где нужен daily-лимит.
+        # _consume_story_source также проставит last_story_at как
+        # аналитический след (не блокирующий — главный лимит per-child).
         _consume_story_source(u_db, source)
         # child_name пишем только при первом разе (он редко меняется),
         # а child_age — каждый раз, потому что:
