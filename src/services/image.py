@@ -183,12 +183,23 @@ async def generate_three_illustrations(
     if not scenes:
         scenes = {"opening": None, "climax": None, "ending": None}
 
-    # Фиксируем ОДИН style_variant на всю сказку — три картинки внутри
-    # одной книжки должны быть визуально целостны (одна композиционная
-    # тема). Между разными сказками вариант будет разный — это даёт
-    # межсказочное разнообразие, не ломая внутреннюю целостность.
-    story_variant = _random.choice(list(IMAGE_STYLE_VARIANTS.keys()))
-    logger.info("Story-wide style variant for these 3 illustrations: %s", story_variant)
+    # 3 РАЗНЫХ style_variant без повторов — каждая из трёх картинок
+    # одной книжки в своём регистре. Это даёт визуальную вариативность
+    # ВНУТРИ одной сказки: один разворот вид сверху на мир, другой —
+    # крупный план персонажа, третий — магический момент. Как в
+    # настоящей детской книжке, где соседние развороты не одинаковы.
+    # Между разными сказками — тоже разные тройки, естественно.
+    variant_keys = list(IMAGE_STYLE_VARIANTS.keys())
+    chosen_variants = _random.sample(variant_keys, k=min(3, len(variant_keys)))
+    logger.info(
+        "Style variants for 3 illustrations: opening=%s, climax=%s, ending=%s",
+        *chosen_variants,
+    )
+    variants_per_stage = {
+        "opening": chosen_variants[0],
+        "climax": chosen_variants[1],
+        "ending": chosen_variants[2],
+    }
 
     async def _one(scene_desc: str | None, stage: str) -> Path | None:
         try:
@@ -196,7 +207,7 @@ async def generate_three_illustrations(
                 hero, theme_key,
                 scene_description=scene_desc,
                 stage=stage,
-                style_variant=story_variant,
+                style_variant=variants_per_stage[stage],
             )
         except Exception as e:
             logger.warning("Иллюстрация %s упала: %s", stage, e)
