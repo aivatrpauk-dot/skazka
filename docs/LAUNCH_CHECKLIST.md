@@ -14,7 +14,7 @@
 
 ### 10:00–11:00 — Регистрация бота и API-ключей
 
-- [ ] @BotFather → /newbot → имя `Сказка`, handle (например `SkazkaAIBot` — проверь свободность)
+- [ ] @BotFather → /newbot → имя `Сказка`, handle (например `dream_skazka_bot` — проверь свободность)
 - [ ] Сохрани `BOT_TOKEN`
 - [ ] Создай ключ Gemini: https://aistudio.google.com/apikey
 - [ ] Создай ключ FAL: https://fal.ai/dashboard/keys (можно отложить — без него работают free-сказки)

@@ -127,7 +127,7 @@ cd landing && vercel --prod
 
 **Вариант В: Selectel S3 + cloudflare** — самый дешёвый под нагрузкой. Не критично на старте.
 
-В лендинге замени `{BOT_USERNAME}` (find-and-replace) на реальный handle бота, например `https://t.me/SkazkaAIBot`.
+В лендинге замени `{BOT_USERNAME}` (find-and-replace) на реальный handle бота, например `https://t.me/dream_skazka_bot`.
 
 ## 8. Безопасность
 

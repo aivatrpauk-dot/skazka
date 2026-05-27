@@ -90,21 +90,21 @@ docker compose exec bot cat /app/.env | grep ADMIN_IDS
 ```
 
 Бот ответит:
-- ссылку для размещения: `https://t.me/skazkaAIbot?start=pati`
+- ссылку для размещения: `https://t.me/dream_skazka_bot?start=pati`
 - секретный токен партнёра (примерно 32 символа)
 
 **Этот токен НИКОМУ не отправляй, кроме самого партнёра.** В письме на её рекламную почту:
 
 > Привет! Ваш партнёрский доступ к боту «Сказка»:
 >
-> 1. Откройте бота: https://t.me/skazkaAIbot
+> 1. Откройте бота: https://t.me/dream_skazka_bot
 > 2. Авторизуйтесь: `/partner_login <ВАШТОКЕН>`
 > 3. После этого вам доступны: `/my_stats`, `/my_payments`, `/my_link`
 >
 > Каждая оплата от вашей аудитории автоматически зачисляется на ваш счёт, вы видите все цифры в реальном времени и сами проверяете точность по `payment_id` каждой операции.
 >
 > Ваша ссылка для размещения:
-> `https://t.me/skazkaAIbot?start=pati`
+> `https://t.me/dream_skazka_bot?start=pati`
 
 ---
 
@@ -194,9 +194,9 @@ docker compose exec bot cat /app/.env | grep ADMIN_IDS
 
 Для платных размещений в каналах (не партнёрка, а просто посев):
 
-- Канал «Мама и Малыш»: ссылка `t.me/skazkaAIbot?start=mama_baby`
-- Тестовый канал: `t.me/skazkaAIbot?start=mama_test`
-- Любая другая метка: `t.me/skazkaAIbot?start=<что_угодно>` — попадёт в `user.utm_source`, видно в `/stats` → 📈 Источники
+- Канал «Мама и Малыш»: ссылка `t.me/dream_skazka_bot?start=mama_baby`
+- Тестовый канал: `t.me/dream_skazka_bot?start=mama_test`
+- Любая другая метка: `t.me/dream_skazka_bot?start=<что_угодно>` — попадёт в `user.utm_source`, видно в `/stats` → 📈 Источники
 
 ---
 
