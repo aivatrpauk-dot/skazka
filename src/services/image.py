@@ -184,28 +184,15 @@ async def generate_three_illustrations(
     if not scenes:
         scenes = {"opening": None, "climax": None, "ending": None}
 
-    # Гендер-префикс для сцен. Recraft по дефолту тянет к женщине (трейн-
-    # стиль доминирован Поппи, Lucie, мышками в платьях). Если у нас
-    # известен пол ребёнка-героя (Саня → мальчик, Маша → девочка), явно
-    # сообщаем это в каждую сцену. Без префикса генерилось «мальчик Саня»
-    # с косичками. SCENES-блок пишет нейтрально про «the child» — этого
-    # недостаточно.
-    gender_prefix = ""
-    if child_name:
-        from ..utils import detect_name_gender as _detect_gender
-        g = _detect_gender(child_name)
-        if g is not None:
-            from petrovich.enums import Gender as _G
-            if g == _G.FEMALE:
-                gender_prefix = "A little girl is the main character. "
-            elif g == _G.MALE:
-                gender_prefix = "A little boy is the main character. "
+    # Гендер-префикс УБРАН: при наличии антропоморфного героя сказки
+    # (Зайчик/Котик/...) Recraft пытается совместить «boy is main
+    # character» с трейн-стилем (мыши/зайцы в одежде), и получаются
+    # гибриды — ребёнок с заячьими ушами и т.п. Было хуже чем без
+    # префикса. Гендер пусть лучше иногда не сходится в редких случаях,
+    # чем гибриды в каждой второй картинке.
+    _ = child_name  # пока не используется, оставлено в сигнатуре
 
     def _with_gender(scene_desc: str | None) -> str | None:
-        if not scene_desc:
-            return scene_desc
-        if gender_prefix:
-            return gender_prefix + scene_desc
         return scene_desc
 
     # 3 РАЗНЫХ style_variant без повторов — каждая из трёх картинок
