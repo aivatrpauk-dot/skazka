@@ -244,7 +244,9 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
     # три картинки по stage-промптам без сюжетной привязки.
     illustrations_task = asyncio.create_task(
         generate_three_illustrations(
-            params["hero"], params["theme_key"], scenes=None,
+            params["hero"], params["theme_key"],
+            scenes=None,
+            child_name=params["recipient_name"],
         )
     )
 

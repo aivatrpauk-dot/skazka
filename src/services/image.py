@@ -164,6 +164,7 @@ async def generate_three_illustrations(
     theme_key: str,
     *,
     scenes: dict[str, str] | None,
+    child_name: str | None = None,
 ) -> dict[str, Path | None]:
     """Генерирует 3 иллюстрации для PDF-книжки: обложка, кульминация, финал.
 
@@ -182,6 +183,30 @@ async def generate_three_illustrations(
     # Если сцен нет — используем один и тот же fallback для всех (хотя бы что-то).
     if not scenes:
         scenes = {"opening": None, "climax": None, "ending": None}
+
+    # Гендер-префикс для сцен. Recraft по дефолту тянет к женщине (трейн-
+    # стиль доминирован Поппи, Lucie, мышками в платьях). Если у нас
+    # известен пол ребёнка-героя (Саня → мальчик, Маша → девочка), явно
+    # сообщаем это в каждую сцену. Без префикса генерилось «мальчик Саня»
+    # с косичками. SCENES-блок пишет нейтрально про «the child» — этого
+    # недостаточно.
+    gender_prefix = ""
+    if child_name:
+        from ..utils import detect_name_gender as _detect_gender
+        g = _detect_gender(child_name)
+        if g is not None:
+            from petrovich.enums import Gender as _G
+            if g == _G.FEMALE:
+                gender_prefix = "A little girl is the main character. "
+            elif g == _G.MALE:
+                gender_prefix = "A little boy is the main character. "
+
+    def _with_gender(scene_desc: str | None) -> str | None:
+        if not scene_desc:
+            return scene_desc
+        if gender_prefix:
+            return gender_prefix + scene_desc
+        return scene_desc
 
     # 3 РАЗНЫХ style_variant без повторов — каждая из трёх картинок
     # одной книжки в своём регистре. Это даёт визуальную вариативность
@@ -205,7 +230,7 @@ async def generate_three_illustrations(
         try:
             return await generate_cover(
                 hero, theme_key,
-                scene_description=scene_desc,
+                scene_description=_with_gender(scene_desc),
                 stage=stage,
                 style_variant=variants_per_stage[stage],
             )

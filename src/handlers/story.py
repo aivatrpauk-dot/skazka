@@ -643,7 +643,9 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # без сюжетного мотива, чисто по stage-промптам.
     await bot.send_chat_action(call.message.chat.id, "upload_photo")
     illustrations = await generate_three_illustrations(
-        data["hero"], data["theme_key"], scenes=scenes,
+        data["hero"], data["theme_key"],
+        scenes=scenes,
+        child_name=data["child_name"],
     )
 
     # Собираем PDF
