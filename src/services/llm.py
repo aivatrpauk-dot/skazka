@@ -314,6 +314,15 @@ async def generate_story(
     else:
         _name_intro = "ребёнка"
 
+    # Тональная преамбула: рандомный вариант из 6 (Винни-Пух / Маленький
+    # принц / приключение / хармсовская нелепица / бытовой уют / магия
+    # в обычном мире). Это уравновешивает дефолтный тяг сказочника к
+    # «метафоре и глубине во всём», даёт реальное разнообразие тонов
+    # между сказками.
+    from ..prompts import pick_tonal_variant
+    tonal_key, tonal_text = pick_tonal_variant()
+    logger.info("Tonal variant for story: %s", tonal_key)
+
     user_message = build_story_user_message(
         name_intro=_name_intro,
         child_name=child_name,
@@ -323,6 +332,7 @@ async def generate_story(
         genre=genre,
         opening=opening,
         tone=tone,
+        tonal_variant=tonal_text,
     )
 
     # Канальный режим: дописываем инструкцию переопределения финала +
