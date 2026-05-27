@@ -85,7 +85,7 @@ def _split_for_telegram(text: str, limit: int = TELEGRAM_MSG_LIMIT) -> list[str]
 
 
 def _has_active_subscription(u: User) -> bool:
-    """Активная месячная подписка 1485 ₽."""
+    """Активная месячная подписка 2990 ₽ (одна сказка в день)."""
     if u.subscription_status != SubscriptionStatus.active:
         return False
     if not u.subscription_until:
@@ -114,26 +114,22 @@ def _allowed_source(u: User) -> str | None:
     """Возвращает источник, по которому юзер может оплатить сказку.
     None — значит нет источника (нужен paywall).
 
-    ВАЖНО: эта функция отвечает только за «есть ли чем заплатить», не за
-    «можно ли сегодня для этого ребёнка». Per-child лимит «1 в сутки на
-    ребёнка» (сброс в 08:00 МСК) проверяется отдельно через
-    _was_story_for_child_today() в _run_generation, после того как
-    известно имя ребёнка. Этот лимит применяется ко ВСЕМ источникам
-    кроме админа — single тоже не позволит сделать 2 сказки одному
-    ребёнку за сутки.
+    ВАЖНО: эта функция отвечает только за «есть ли чем заплатить», не
+    за «можно ли сегодня вообще». Per-user лимит «1 сказка в сутки»
+    (сброс в 08:00 МСК) проверяется отдельно через _was_story_today() в
+    cb_story_new и _run_generation. Этот лимит применяется ко всем
+    источникам кроме админа.
 
-    Старого глобального 20-часового cooldown (_is_within_daily_cooldown)
-    больше нет — он стал избыточен после введения per-child лимита, плюс
-    мешал в кейсах «родитель ждал 4 часа хотя уже наступили новые
-    сказочные сутки в 08:00 МСК». Per-child + 8-часовой сброс — этого
-    достаточно для всех бизнес-сценариев.
+    С мая 2026 лимит стал per-user, не per-child — продуктовая
+    дисциплина «одна сказка в день перед сном как единый семейный
+    ритуал», независимо от количества детей в семье.
 
     Логика выбора источника (от халявного к дорогому):
-      0. Админ → SOURCE_ADMIN (обходит всё, включая per-child).
+      0. Админ → SOURCE_ADMIN (обходит всё, включая per-user-лимит).
       1. Бонусные сказки (от рефералки/feedback).
       2. Free trial первая сказка.
       3. Single-разовая покупка.
-      4. Pack.
+      4. Pack (handler жив, кнопка убрана из UI с мая 2026).
       5. Subscription active.
     """
     if u.telegram_id in config.admin_ids:
@@ -162,8 +158,8 @@ def _consume_story_source(u: User, source: str) -> None:
 
     last_story_at заполняется для всех платных источников как
     аналитический след (используется в /user_info и дашбордах).
-    Блокирующей роли больше не несёт — главный лимит работает per-child
-    через _was_story_for_child_today (сброс в 08:00 МСК).
+    Блокирующей роли больше не несёт — главный лимит работает per-user
+    через _was_story_today (сброс в 08:00 МСК).
     Для SOURCE_ADMIN — ничего не списывается и last_story_at не ставится.
     """
     now = dt.datetime.now(dt.timezone.utc)
@@ -255,28 +251,23 @@ def _story_day(utc_dt: _dt.datetime) -> _dt.date:
     return shifted.date()
 
 
-async def _was_story_for_child_today(user_id: int, child_name: str) -> bool:
-    """Возвращает True, если у юзера УЖЕ была сказка для ЭТОГО ребёнка
-    в текущих «сказочных сутках» (с 08:00 МСК до 08:00 МСК следующего дня).
+async def _was_story_today(user_id: int) -> bool:
+    """Возвращает True, если у юзера УЖЕ была сказка СЕГОДНЯ
+    (в текущих «сказочных сутках» с 08:00 МСК до 08:00 МСК следующего дня).
 
-    Лимит 1/сутки привязан к ИМЕНИ ребёнка, а не к юзеру в целом.
-    Родитель с двумя детьми (Маша и Ваня) может сделать одну сказку
-    для Маши и одну для Вани в одни сутки.
+    С мая 2026: лимит per-user, не per-child. Бренд-позиционирование —
+    «одна сказка в день перед сном» как единый семейный ритуал. Если у
+    родителя несколько детей, он вписывает их всех в одну сказку
+    (мульти-протагонист, отдельный фичер на v2).
 
-    Сброс в 08:00 МСК (не в полночь) — потому что:
-    1. У родителей разные часовые пояса. Полуночный сброс в МСК для
-       Владивостока — это 07:00 утра, и человек, проснувшись в 7:30,
-       уже не может «вчерашнюю» сказку для того же ребёнка. Дома же
-       в МСК полуночный сброс ловит тех, кто читает ребёнку поздно
-       (23:50 → ждёт 10 минут → может ещё одну, абсурд).
-    2. 08:00 МСК = диапазон от 07:00 (Калининград UTC+2) до 16:00
-       (Камчатка UTC+12). Все эти зоны спят, никто не делает сказки.
-       К пробуждению лимит точно сброшен.
+    Сброс в 08:00 МСК — см. бывший комментарий: 08:00 МСК = диапазон
+    от 07:00 (Калининград) до 16:00 (Камчатка), все спят, лимит сброшен
+    к пробуждению независимо от часового пояса.
     """
     async with Session() as s:
         last = (await s.execute(
             select(Story.created_at)
-            .where(Story.user_id == user_id, Story.child_name == child_name)
+            .where(Story.user_id == user_id)
             .order_by(desc(Story.created_at))
             .limit(1)
         )).scalar_one_or_none()
@@ -285,40 +276,6 @@ async def _was_story_for_child_today(user_id: int, child_name: str) -> bool:
     now_day = _story_day(_dt.datetime.now(_dt.timezone.utc))
     last_day = _story_day(last)
     return last_day == now_day
-
-
-async def _names_used_today(user_id: int, names: list[str]) -> set[str]:
-    """Возвращает set имён из списка, для которых в ТЕКУЩИХ «сказочных
-    сутках» (08:00 МСК → 08:00 МСК) у юзера уже была сказка. Используется
-    в name_choice_kb чтобы помечать имена с исчерпанным лимитом ещё до
-    клика — юзер сразу видит, кому сегодня нельзя.
-
-    ВАЖНО: должно быть согласовано с _was_story_for_child_today по
-    границе суток. Раньше тут была полуночная граница МСК, что давало
-    8-часовое визуальное расхождение между 00:00 и 08:00 МСК (UI
-    показывал имя свободным, главный блокатор отказывал).
-    """
-    if not names:
-        return set()
-    # Граница текущих «сказочных суток» — последнее наступление 08:00 МСК.
-    now_utc = _dt.datetime.now(_dt.timezone.utc)
-    now_msk = now_utc.astimezone(_MSK_TZ)
-    reset_today_msk = now_msk.replace(
-        hour=STORY_DAY_RESET_HOUR_MSK, minute=0, second=0, microsecond=0,
-    )
-    if now_msk < reset_today_msk:
-        # Сейчас ещё до 08:00 МСК — текущие сутки начались вчера в 08:00.
-        reset_today_msk -= _dt.timedelta(days=1)
-    reset_utc = reset_today_msk.astimezone(_dt.timezone.utc)
-    async with Session() as s:
-        rows = (await s.execute(
-            select(Story.child_name).distinct().where(
-                Story.user_id == user_id,
-                Story.child_name.in_(names),
-                Story.created_at >= reset_utc,
-            )
-        )).all()
-    return {r[0] for r in rows if r[0]}
 
 
 @router.callback_query(F.data == "story:new")
@@ -332,35 +289,31 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
         await call.answer()
         return
 
+    # Per-user проверка «одна сказка в день» — на самом входе, чтобы не
+    # водить юзера через визард впустую. Админы (config.admin_ids) лимит
+    # обходят (для тестирования).
+    is_admin = u.telegram_id in config.admin_ids
+    if not is_admin and await _was_story_today(u.id):
+        await call.message.edit_text(
+            "🌙 Сегодняшняя сказка уже сложилась. Пусть она звучит "
+            "перед сном — это и есть наш ритуал, где важно качество, "
+            "а не количество.\n\n"
+            "Завтра — новая сказка.",
+            reply_markup=daily_limit_kb(),
+        )
+        await call.answer()
+        return
+
     # Имя ВСЕГДА спрашиваем заново. Если у юзера уже были сказки — даём
-    # список последних имён + «Другое имя». Если это первая сказка — сразу
-    # просим написать имя.
-    #
-    # Имена помечаем маркерами состояния: 🌙 — у ребёнка сегодня уже есть
-    # сказка («спит»), 🕯 — ждёт сказку. Юзер не пройдёт визард впустую
-    # (раньше: выбор имени → возраст → тема → ОТКАЗ; теперь видно прямо
-    # в списке, клик по 🌙 показывает alert, не запускает визард).
+    # список последних имён + «Другое имя». Если это первая сказка —
+    # сразу просим написать имя.
     from ..keyboards import name_choice_kb
     names = await _get_user_child_names(u.id)
     if names:
-        used_today = await _names_used_today(u.id, names[:5])
-        # Если ВСЕ имена в кнопках исчерпали лимит — мягко поясняем
-        # контекст в заголовке, чтобы юзер не недоумевал почему всё в
-        # галочках. Кнопка «Другое имя» остаётся доступной.
-        if used_today and len(used_today) >= len(names[:5]):
-            header = (
-                "🌙 Для всех Ваших детей сегодня уже сложилась сказка.\n"
-                "<i>Если хотите, можно сделать для другого ребёнка — "
-                "введите его имя.</i>"
-            )
-        else:
-            header = (
-                "🕯 Для кого сегодня сказка?\n"
-                "<i>Выберите ребёнка из списка или введите другое имя.</i>"
-            )
         await call.message.edit_text(
-            header,
-            reply_markup=name_choice_kb(names, used_today=used_today),
+            "🕯 Для кого сегодня сказка?\n"
+            "<i>Выберите ребёнка из списка или введите другое имя.</i>",
+            reply_markup=name_choice_kb(names),
         )
         await state.set_state(StoryWizard.waiting_name_choice)
         await call.answer()
@@ -400,36 +353,10 @@ async def cb_name_new(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("name:done:"))
-async def cb_name_done(call: CallbackQuery) -> None:
-    """Юзер кликнул на имя, помеченное «🌙 …» (сказка на сегодня уже есть).
-    Показываем alert вместо запуска визарда, чтобы он сразу понял
-    почему ничего не происходит и что нужно ввести другое имя.
-    """
-    name = call.data.split(":", 2)[2] if call.data.count(":") >= 2 else ""
-    # Склоняем имя в родительный («у Кости», не «у Костя»). genitive()
-    # внутри зовёт petrovich (точен для редких имён: Илья, Никита,
-    # Лука) + pymorphy3 как fallback. Работает на русских, кавказских,
-    # тюркских именах. См. utils/text.py:_decline.
-    # Убираем местоимения («у него»/«у неё») и не делаем gender-detection
-    # ради одного слова — переписываем фразу так, чтобы подлежащее
-    # «сказка» подразумевалось из контекста. Работает для любого имени:
-    # Маша, Костя, Айдар, Амина — всё ровно.
-    if name:
-        gen = genitive(name)
-        await call.answer(
-            f"🌙 У {gen} сегодня уже есть своя сказка — пусть звучит "
-            "перед сном.\n\nДля другого малыша можно сочинить новую: "
-            "выберите имя сверху или введите новое.",
-            show_alert=True,
-        )
-    else:
-        await call.answer(
-            "🌙 У этого малыша сегодня уже есть своя сказка — пусть "
-            "звучит перед сном.\n\nДля другого ребёнка можно сочинить "
-            "новую: выберите имя сверху или введите новое.",
-            show_alert=True,
-        )
+# cb_name_done удалён вместе с per-child лимитом (май 2026). С новой
+# моделью лимита per-user проверка идёт на входе в cb_story_new — юзер
+# до окна выбора имени просто не доходит, если сегодняшняя сказка уже
+# была. name:done callback больше не генерируется в UI.
 
 
 @router.message(StoryWizard.waiting_child_name)
@@ -571,32 +498,22 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         await call.answer(msg or "Слишком быстро", show_alert=True)
         return
 
-    # ───── Лимит 1 сказка в день НА ИМЯ РЕБЁНКА (по Москве) ─────
-    # Логика: лимит «одна сказка в день» привязан к ИМЕНИ ребёнка, не к
-    # юзеру в целом. У родителя с двумя детьми (Маша, Ваня) сегодня может
-    # быть и сказка для Маши, и сказка для Вани — это не нарушает «один
-    # ритуал в день для одного ребёнка». Сбрасывается в полночь по МСК.
-    # Админы (config.admin_ids) обходят лимит — для тестирования.
+    # ───── Лимит «одна сказка в день» per-user (с мая 2026) ─────
+    # Защитная повторная проверка — основной блок стоит в cb_story_new
+    # на входе, но если состояние FSM пережило перезапуск или юзер прошёл
+    # через нестандартный путь — ловим тут. Админы обходят.
     u_pre = await _get_user(call.from_user.id)
     is_admin = u_pre.telegram_id in config.admin_ids
-    pre_data = await state.get_data()
-    candidate_name = (pre_data.get("child_name") or "").strip()
-    if candidate_name and not is_admin:
-        if await _was_story_for_child_today(u_pre.id, candidate_name):
-            await call.message.edit_text(
-                f"🌙 Для {genitive(candidate_name)} сказка уже была сегодня.\n\n"
-                "Пусть ребёнок подумает о ней перед сном и спокойно уснёт — "
-                "это и есть ритуал, где важно качество, а не количество.\n\n"
-                "Завтра — новая. А если хочется сказку для другого "
-                "ребёнка — нажмите кнопку ниже и введите имя.",
-                reply_markup=daily_limit_kb(),
-            )
-            # Сбрасываем имя из state, чтобы клик «Другому ребёнку»
-            # (callback name:new) корректно ушёл в чистый ввод имени.
-            await state.update_data(child_name=None)
-            await state.set_state(StoryWizard.waiting_name_choice)
-            await call.answer()
-            return
+    if not is_admin and await _was_story_today(u_pre.id):
+        await call.message.edit_text(
+            "🌙 Сегодняшняя сказка уже сложилась. Пусть она звучит "
+            "перед сном — это и есть наш ритуал.\n\n"
+            "Завтра — новая.",
+            reply_markup=daily_limit_kb(),
+        )
+        await state.clear()
+        await call.answer()
+        return
 
     data = await state.get_data()
     await state.clear()

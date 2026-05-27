@@ -25,44 +25,22 @@ def main_menu_kb(
     return kb.as_markup()
 
 
-def name_choice_kb(
-    names: list[str],
-    used_today: set[str] | None = None,
-) -> InlineKeyboardMarkup:
+def name_choice_kb(names: list[str]) -> InlineKeyboardMarkup:
     """Клавиатура выбора ребёнка — список ранее использованных имён.
-    Если у юзера ДВА разных ребёнка, он каждый раз сам выбирает кому
-    сегодняшняя сказка. Плюс кнопка «Другое имя» — ввести новое имя
-    (например, если племянник пришёл в гости).
+    С мая 2026 лимит «одна сказка в день» стал per-user (не per-child) —
+    юзер до этого окна не доходит, если сегодняшняя сказка уже была.
+    Поэтому никаких маркеров «🌙 спит» / «🕯 ждёт» — все имена просто
+    активны для клика.
 
-    used_today — set имён, для которых сегодня (по МСК) уже была сказка.
-    Такие имена помечаются префиксом «✅» и при клике на них юзер
-    получит alert вместо перехода в визард — это явный сигнал «лимит»
-    ещё до прохождения всего flow.
-
-    Имена в callback_data передаются URL-encoded на случай странных
-    символов в имени; обычно это просто кириллица или латиница.
+    Кнопка «Другое имя» — ввести новое (например, племянник пришёл).
     """
-    used_today = used_today or set()
     kb = InlineKeyboardBuilder()
     # До 5 последних имён в кнопках (больше не помещается в чате).
-    # Маркеры на состоянии ребёнка:
-    #  🌙 {имя} — сказка на сегодня уже есть, ребёнок «спит». При клике
-    #             handler покажет alert (callback_data="name:done:…").
-    #  🕯 {имя} · ждёт сказку — ещё не было сказки сегодня. Клик ведёт
-    #             в визард (callback_data="name:pick:…").
-    # Раньше было «✅ {имя} (сегодня уже была)» — звучало как упрёк
-    # родителю. Луна+свеча работают красивее и в духе вечернего ритуала.
     for name in names[:5]:
-        if name in used_today:
-            kb.button(
-                text=f"🌙 {name} спит.",
-                callback_data=f"name:done:{name}",
-            )
-        else:
-            kb.button(
-                text=f"🕯 {name} ждёт сказку.",
-                callback_data=f"name:pick:{name}",
-            )
+        kb.button(
+            text=f"🕯 {name}",
+            callback_data=f"name:pick:{name}",
+        )
     kb.button(text="✏️ Другое имя", callback_data="name:new")
     kb.button(text="◀ В меню", callback_data="story:cancel")
     kb.adjust(1)
@@ -127,19 +105,17 @@ def length_kb() -> InlineKeyboardMarkup:
 
 
 def paywall_kb(can_referral: bool = True) -> InlineKeyboardMarkup:
-    """Премиум-paywall: три тарифа от дешёвого к дорогому, потом реферал.
+    """Premium-paywall: ДВА тарифа — разовая и подписка. Пакет убран из UI
+    (handler `bill:pack` оставлен в коде, легко вернуть кнопку если
+    тестирование покажет нужду).
 
-    Сортировка: разовая → пакет → подписка. Юзер сначала видит самую низкую
-    цену, чтобы не отпугнуть. Скидки −34% и −50% подсвечены в названии —
-    мгновенный сигнал «выгодно».
-
-    Подарочная сказка временно убрана из UI — фокусируемся на разовой/пакете/
-    подписке. Код gift handler оставлен, легко вернуть кнопку.
+    Цены повышены на ребрендинге (май 2026):
+      99 ₽ → 149 ₽ за разовую (премиум-позиционирование);
+      1485 ₽ → 2990 ₽ за месяц (ежедневный ритуал).
     """
     kb = InlineKeyboardBuilder()
-    kb.button(text="🕯 Одна сказка на вечер — 99 ₽", callback_data="bill:single")
-    kb.button(text="📖 Пакет из 15 сказок — 999 ₽ (−34%)", callback_data="bill:pack")
-    kb.button(text="🌙 Сказка каждый вечер на месяц — 1485 ₽ (−50%)", callback_data="bill:monthly")
+    kb.button(text="🕯 Одна сказка на вечер — 149 ₽", callback_data="bill:single")
+    kb.button(text="🌙 Сказка каждый вечер на месяц — 2990 ₽", callback_data="bill:monthly")
     if can_referral:
         kb.button(text="💌 Пригласить близких", callback_data="ref:share")
     kb.button(text="◀ Вернуться в меню", callback_data="menu:main")

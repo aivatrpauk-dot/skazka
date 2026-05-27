@@ -1,14 +1,16 @@
 """Платежи. Telegram Payments (provider=ЮKassa) + рекуррент через API ЮKassa.
 
-Три тарифа (см. services/billing.py):
-  - bill:single  → 99 ₽ за одну сказку
-  - bill:pack    → 999 ₽ за пакет 15 сказок (−34%)
-  - bill:monthly → 1485 ₽/мес подписка (−50%, рекуррент)
+Текущие тарифы (см. services/billing.py):
+  - bill:single  → 149 ₽ за одну сказку
+  - bill:monthly → 2990 ₽/мес подписка (одна сказка/день, рекуррент)
 
-Legacy:
-  - bill:sub  → перенаправляется на bill:monthly (старый callback в архивных
-                сообщениях/пушах продолжает работать).
-  - bill:plans → показ paywall (все три тарифа сразу).
+Legacy/скрытое:
+  - bill:pack — handler жив, но кнопка убрана из paywall_kb (премиум-фокус
+                на single+monthly с мая 2026). Возврат — добавлением
+                кнопки обратно в keyboards/inline.py.
+  - bill:sub  → перенаправляется на bill:monthly (старый callback из
+                490₽-времён, в архивных пушах продолжает работать).
+  - bill:plans → показ paywall (видимые тарифы).
 """
 from __future__ import annotations
 
@@ -42,16 +44,13 @@ router = Router(name="billing")
 PLANS_TEXT = (
     "<b>🌟 Тарифы</b>\n\n"
     "🕯 <b>Знакомство — бесплатно</b>\n"
-    "{free} сказка в подарок при первом запуске.\n\n"
-    "🕯 <b>Одна сказка на вечер — 99 ₽</b>\n"
+    "{free} сказка-демо в подарок при первом запуске.\n\n"
+    "🕯 <b>Одна сказка на вечер — 149 ₽</b>\n"
     "Разовая покупка. Без обязательств и подписок — просто одна тёплая "
-    "история перед сном.\n\n"
-    "📖 <b>Пакет из 15 сказок — 999 ₽</b> <i>(−34%)</i>\n"
-    "Две недели вечернего ритуала. Сроки не сгорают — пользуйтесь "
-    "когда сердце попросит.\n\n"
-    "🌙 <b>Сказка каждый вечер на месяц — 1485 ₽</b> <i>(−50%)</i>\n"
-    "Одна сказка ежедневно тридцать дней. Продление автоматическое, "
-    "отмена — в один клик.\n\n"
+    "персональная история перед сном.\n\n"
+    "🌙 <b>Сказка каждый вечер на месяц — 2990 ₽</b>\n"
+    "Одна персональная сказка ежедневно тридцать дней — меньше 100 ₽ "
+    "за каждую. Продление автоматическое, отмена — в один клик.\n\n"
     "<b>В каждой сказке для Вас приготовлено:</b>\n"
     "📖 PDF-книжечка с тремя авторскими иллюстрациями — открыли и "
     "читаете малышу вслух\n"
@@ -104,7 +103,7 @@ async def _accept_tos(telegram_id: int) -> None:
 
 @router.callback_query(F.data == "bill:single")
 async def cb_single(call: CallbackQuery, bot: Bot) -> None:
-    """Одна сказка 99 ₽."""
+    """Одна сказка 149 ₽."""
     await call.answer()
     await _accept_tos(call.from_user.id)
     await create_single_invoice(bot, call.message.chat.id, call.from_user.id)
@@ -112,7 +111,7 @@ async def cb_single(call: CallbackQuery, bot: Bot) -> None:
 
 @router.callback_query(F.data == "bill:pack")
 async def cb_pack(call: CallbackQuery, bot: Bot) -> None:
-    """Пакет 15 сказок 999 ₽."""
+    """Пакет 15 сказок (скрыт из UI с мая 2026, handler оставлен)."""
     await call.answer()
     await _accept_tos(call.from_user.id)
     await create_pack_invoice(bot, call.message.chat.id, call.from_user.id)
@@ -120,7 +119,7 @@ async def cb_pack(call: CallbackQuery, bot: Bot) -> None:
 
 @router.callback_query(F.data == "bill:monthly")
 async def cb_monthly(call: CallbackQuery, bot: Bot) -> None:
-    """Подписка 1485 ₽/мес."""
+    """Подписка 2990 ₽/мес (одна сказка в день, рекуррент)."""
     await call.answer()
     await _accept_tos(call.from_user.id)
     await create_monthly_invoice(bot, call.message.chat.id, call.from_user.id)

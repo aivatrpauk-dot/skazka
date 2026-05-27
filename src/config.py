@@ -142,13 +142,17 @@ class Config:
     # Просто переход по ?start=ref_XXX бонуса больше не даёт.
     referral_bonus: int = field(default_factory=lambda: _int("REFERRAL_BONUS", 1))
 
-    # Разовая сказка — 99 ₽
-    price_single_kopecks: int = field(default_factory=lambda: _int("PRICE_SINGLE_KOPECKS", 9900))
-    # Пакет 15 сказок (одна в день) — 999 ₽
+    # Разовая сказка — 149 ₽ (премиум-позиционирование, май 2026)
+    price_single_kopecks: int = field(default_factory=lambda: _int("PRICE_SINGLE_KOPECKS", 14900))
+    # Пакет 15 сказок — УБРАН ИЗ UI (handler оставлен в billing.py на случай
+    # возврата). Поля сохранены для backward-compat с уже существующей
+    # колонкой БД pack_stories_remaining.
     price_pack_kopecks: int = field(default_factory=lambda: _int("PRICE_PACK_KOPECKS", 99900))
     pack_stories_count: int = field(default_factory=lambda: _int("PACK_STORIES_COUNT", 15))
-    # Месячная подписка (одна в день, рекуррент) — 1485 ₽
-    price_monthly_kopecks: int = field(default_factory=lambda: _int("PRICE_MONTHLY_KOPECKS", 148500))
+    # Месячная подписка (одна в день, рекуррент) — 2990 ₽
+    # При 30 сказках в месяце выходит ~99₽ за сказку, плюс защита от
+    # «забыл купить» для ежедневного ритуала.
+    price_monthly_kopecks: int = field(default_factory=lambda: _int("PRICE_MONTHLY_KOPECKS", 299000))
     # Подарочная сказка — 199 ₽ (оставляем для /gift)
     price_gift_kopecks: int = field(default_factory=lambda: _int("PRICE_GIFT_KOPECKS", 19900))
 
