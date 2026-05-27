@@ -22,10 +22,13 @@ from pathlib import Path
 
 import httpx
 
+import random as _random
+
 from ..config import config
 from ..prompts import (
     FALLBACK_SCENE_TEMPLATE,
     IMAGE_STYLE_BASE,
+    IMAGE_STYLE_VARIANTS,
     THEME_TO_EN,
 )
 
@@ -61,20 +64,28 @@ async def generate_cover(
     *,
     scene_description: str | None = None,
     stage: str | None = None,
+    style_variant: str | None = None,
 ) -> Path | None:
     """Генерирует иллюстрацию для PDF-книжки.
 
     scene_description — одно английское предложение от сказочника-Claude,
     описывающее одну из трёх параллельных сцен мира сказки.
-    stage — legacy, больше не используется (раньше выбирал stage-
-            специфичный промпт; теперь у нас единая стилевая константа
-            IMAGE_STYLE_BASE для всех картинок). Оставлен в сигнатуре
-            ради backward-compat вызовов.
+    stage — legacy, больше не используется.
+    style_variant — ключ из IMAGE_STYLE_VARIANTS (vast_world, busy_scene,
+            magic_moment, cozy_interior, journey, character_focus).
+            Если None — выбирается рандомно. Это даёт ротацию композиций
+            и убирает эффект «фотоальбом одного персонажа».
     """
     _ = THEME_TO_EN.get(theme_key, "kindness and warmth")  # legacy theme
     _ = stage  # больше не используется
 
-    style_prompt = IMAGE_STYLE_BASE
+    if style_variant and style_variant in IMAGE_STYLE_VARIANTS:
+        style_prompt = IMAGE_STYLE_VARIANTS[style_variant]
+        logger.info("Image style variant: %s (explicit)", style_variant)
+    else:
+        chosen_key = _random.choice(list(IMAGE_STYLE_VARIANTS.keys()))
+        style_prompt = IMAGE_STYLE_VARIANTS[chosen_key]
+        logger.info("Image style variant: %s (random)", chosen_key)
 
     # Чистый художественный промпт (см. IMAGE_STYLE_BASE) без технических
     # guard'ов. Раньше тут был «// wordless, no text.» суффикс — его
@@ -172,12 +183,20 @@ async def generate_three_illustrations(
     if not scenes:
         scenes = {"opening": None, "climax": None, "ending": None}
 
+    # Фиксируем ОДИН style_variant на всю сказку — три картинки внутри
+    # одной книжки должны быть визуально целостны (одна композиционная
+    # тема). Между разными сказками вариант будет разный — это даёт
+    # межсказочное разнообразие, не ломая внутреннюю целостность.
+    story_variant = _random.choice(list(IMAGE_STYLE_VARIANTS.keys()))
+    logger.info("Story-wide style variant for these 3 illustrations: %s", story_variant)
+
     async def _one(scene_desc: str | None, stage: str) -> Path | None:
         try:
             return await generate_cover(
                 hero, theme_key,
                 scene_description=scene_desc,
                 stage=stage,
+                style_variant=story_variant,
             )
         except Exception as e:
             logger.warning("Иллюстрация %s упала: %s", stage, e)
