@@ -454,7 +454,15 @@ _COMMON_DNA = (
     "or magical twilight. Spirit of Totoro / Kiki / Spirited Away — "
     "wonder, warmth, gentle magic. Kind round-faced children, no Disney "
     "stylization. NO mice or rabbits in clothing as main character. "
-    "NO TEXT, no letters, no captions in frame."
+    "NO TEXT, no letters, no captions in frame. "
+    # Safety-блок — это детские сказки. Не допускаем ничего что не "
+    # пройдёт глазами родителя.
+    "STRICTLY for children's bedtime book, fully family-safe and "
+    "age-appropriate. NO sexualization of any kind, NO suggestive poses, "
+    "NO manga fanservice, NO bare skin beyond hands and face, NO "
+    "tight or revealing clothing. Children fully dressed in modest "
+    "simple clothes. NO violence, NO weapons, NO scary monsters, NO "
+    "dark themes. Innocent and warm, like a picture book for a 6-year-old."
 )
 
 
