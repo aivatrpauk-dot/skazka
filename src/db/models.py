@@ -135,6 +135,11 @@ class Story(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     child_name: Mapped[str] = mapped_column(String(64))
     child_age: Mapped[int] = mapped_column(Integer)
+    # Пол ребёнка ("male" / "female"). Добавлен в мае 2026 — раньше
+    # автоопределялся по словарю CIS-имён, теперь юзер указывает явно
+    # в визарде. Nullable для совместимости со старыми записями (там
+    # вместо явного значения работает detect_name_gender как fallback).
+    child_gender: Mapped[str | None] = mapped_column(String(8))
     hero: Mapped[str] = mapped_column(String(128))
     theme: Mapped[str] = mapped_column(String(64))
     length: Mapped[str] = mapped_column(String(16))  # short/medium

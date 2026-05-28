@@ -62,13 +62,32 @@ def _gift_summary_kb() -> "InlineKeyboardBuilder":
 
 @router.callback_query(F.data == "gift:new")
 async def cb_gift_new(call: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(GiftWizard.waiting_recipient_name)
+    """Старт gift-флоу: спрашиваем пол ПЕРЕД именем, потом имя, потом
+    личное послание."""
     await call.message.edit_text(
         "🎁 <b>Сказка в подарок</b>\n\n"
-        "Сложим персональную сказку — с именем ребёнка, его полом и "
-        "Вашим тёплым посланием. Стоимость — <b>199 ₽</b>.\n\n"
-        "Как зовут того, кому делаем подарок? Напишите имя."
+        "Сложим персональную сказку — с именем ребёнка и Вашим тёплым "
+        "посланием. Стоимость — <b>199 ₽</b>.\n\n"
+        "Кому делаем подарок — мальчику или девочке?",
+        reply_markup=gender_kb(),
     )
+    await state.set_state(GiftWizard.waiting_recipient_gender)
+    await call.answer()
+
+
+@router.callback_query(GiftWizard.waiting_recipient_gender, F.data.startswith("gender:"))
+async def cb_recipient_gender(call: CallbackQuery, state: FSMContext) -> None:
+    gender = call.data.split(":", 1)[1]
+    if gender not in ("male", "female"):
+        await call.answer("Выберите мальчик или девочка", show_alert=True)
+        return
+    await state.update_data(recipient_gender=gender)
+    # Дальше спрашиваем имя
+    who = "мальчика" if gender == "male" else "девочку"
+    await call.message.edit_text(
+        f"🕯 А как зовут {who}? Напишите имя."
+    )
+    await state.set_state(GiftWizard.waiting_recipient_name)
     await call.answer()
 
 
@@ -81,20 +100,6 @@ async def m_recipient_name(message: Message, state: FSMContext) -> None:
     name = normalize_name(raw)
     await state.update_data(recipient_name=name)
     await message.answer(
-        f"🕯 <b>{name}</b> — мальчик или девочка?",
-        reply_markup=gender_kb(),
-    )
-    await state.set_state(GiftWizard.waiting_recipient_gender)
-
-
-@router.callback_query(GiftWizard.waiting_recipient_gender, F.data.startswith("gender:"))
-async def cb_recipient_gender(call: CallbackQuery, state: FSMContext) -> None:
-    gender = call.data.split(":", 1)[1]
-    if gender not in ("male", "female"):
-        await call.answer("Выберите мальчик или девочка", show_alert=True)
-        return
-    await state.update_data(recipient_gender=gender)
-    await call.message.edit_text(
         "🕯 Напишите личное послание от Вас — что-то тёплое или "
         "поздравление. Сказочник вплетёт его смысл в сказку, не "
         "цитируя дословно.\n\n"
@@ -102,7 +107,6 @@ async def cb_recipient_gender(call: CallbackQuery, state: FSMContext) -> None:
         "Желаю смелости и волшебных открытий».</i>"
     )
     await state.set_state(GiftWizard.waiting_personal_note)
-    await call.answer()
 
 
 @router.message(GiftWizard.waiting_personal_note)

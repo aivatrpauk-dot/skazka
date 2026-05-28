@@ -229,6 +229,26 @@ async def _get_user_child_names(user_id: int) -> list[str]:
     return names
 
 
+async def _last_gender_for_name(user_id: int, child_name: str) -> str | None:
+    """Возвращает последний явно указанный child_gender для этого ребёнка
+    у этого юзера. None если ребёнок legacy (все его прошлые сказки
+    создавались до введения колонки gender в мае 2026).
+
+    Если gender найден — визард пропускает шаг «мальчик/девочка» при
+    выборе имени из списка прежних. Если None — спросит один раз, и
+    при создании Story значение сохранится в БД (см. _run_generation).
+    """
+    async with Session() as s:
+        gender = (await s.execute(
+            select(Story.child_gender)
+            .where(Story.user_id == user_id, Story.child_name == child_name)
+            .where(Story.child_gender.isnot(None))
+            .order_by(desc(Story.created_at))
+            .limit(1)
+        )).scalar_one_or_none()
+    return gender
+
+
 # «Сутки сказки» — это не календарные сутки от 00:00 до 24:00, а
 # окно от 08:00 МСК одного дня до 08:00 МСК следующего. Так лимит
 # «одна сказка на ребёнка в сутки» гарантированно сбрасывается ДО
@@ -306,7 +326,7 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
 
     # Имя ВСЕГДА спрашиваем заново. Если у юзера уже были сказки — даём
     # список последних имён + «Другое имя». Если это первая сказка —
-    # сразу просим написать имя.
+    # сразу спрашиваем пол (потом имя — см. cb_child_gender).
     from ..keyboards import name_choice_kb
     names = await _get_user_child_names(u.id)
     if names:
@@ -319,26 +339,44 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
         await call.answer()
         return
 
+    # Первая сказка у юзера. Спрашиваем пол ПЕРЕД именем — потом
+    # обращаемся к малышу уже грамотно, а не через нейтральное «ребёнок».
     await call.message.edit_text(
-        "🕯 Как зовут ребёнка? Напишите имя.",
+        "🕯 Расскажите про малыша. Это мальчик или девочка?",
+        reply_markup=gender_kb(),
     )
-    await state.set_state(StoryWizard.waiting_child_name)
+    await state.set_state(StoryWizard.waiting_child_gender)
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("name:pick:"))
-async def cb_name_pick(call: CallbackQuery, state: FSMContext) -> None:
-    """Юзер выбрал ИМЯ из списка прежних → спрашиваем пол."""
+async def cb_name_pick(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    """Юзер выбрал ИМЯ из списка прежних.
+
+    Если пол этого ребёнка уже знаем из его прошлых сказок (Story.child_gender
+    в БД) — сразу запускаем генерацию. Если ребёнок legacy (все его сказки
+    созданы до мая 2026) — спросим пол один раз, и при создании новой
+    Story значение запишется в БД, в следующий раз спрашивать не будем.
+    """
     name = call.data.split(":", 2)[2]
     if not name:
         await call.answer("Пустое имя", show_alert=True)
         return
+    u = await _get_user(call.from_user.id)
+    gender = await _last_gender_for_name(u.id, name)
     # child_age=6 как единый дефолт; hero и theme_key пустые — downstream
     # код умеет это обрабатывать (PDF-заголовок «Сказка для X», after_story_kb
     # без «продолжить про X»).
     await state.update_data(child_name=name, child_age=6, hero="", theme_key="")
+    if gender:
+        # Пол уже знаем — не переспрашиваем.
+        await state.update_data(child_gender=gender)
+        await _run_generation(call, state, bot)
+        return
+    # Legacy-ребёнок без gender в БД — один раз спросим.
     await call.message.edit_text(
-        f"🕯 <b>{name}</b> — мальчик или девочка?",
+        f"🕯 <b>{name}</b> — мальчик или девочка?\n"
+        f"<i>Спрошу один раз, потом запомню.</i>",
         reply_markup=gender_kb(),
     )
     await state.set_state(StoryWizard.waiting_child_gender)
@@ -347,12 +385,18 @@ async def cb_name_pick(call: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "name:new")
 async def cb_name_new(call: CallbackQuery, state: FSMContext) -> None:
-    """Юзер выбрал «Другое имя» → просим ввести новое."""
+    """Юзер выбрал «Другое имя» → спрашиваем пол ПЕРЕД именем.
+
+    Сначала пол, потом имя — иначе нелепо обращаться к новому малышу
+    через нейтральное «ребёнок», а потом уточнять. После gender'а попросим
+    ввести имя (см. cb_child_gender).
+    """
     await state.update_data(child_name=None)
     await call.message.edit_text(
-        "🕯 Как зовут ребёнка? Напишите имя.",
+        "🕯 Расскажите про малыша. Это мальчик или девочка?",
+        reply_markup=gender_kb(),
     )
-    await state.set_state(StoryWizard.waiting_child_name)
+    await state.set_state(StoryWizard.waiting_child_gender)
     await call.answer()
 
 
@@ -362,9 +406,38 @@ async def cb_name_new(call: CallbackQuery, state: FSMContext) -> None:
 # была. name:done callback больше не генерируется в UI.
 
 
+@router.callback_query(StoryWizard.waiting_child_gender, F.data.startswith("gender:"))
+async def cb_child_gender(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    """Юзер выбрал пол.
+
+    Два сценария:
+    1. У нас уже есть child_name (legacy-ребёнок из списка, для которого
+       мы запросили пол один раз) — сразу запускаем генерацию.
+    2. child_name пустой (новый малыш или первая сказка юзера) —
+       просим ввести имя.
+    """
+    gender = call.data.split(":", 1)[1]
+    if gender not in ("male", "female"):
+        await call.answer("Выберите мальчик или девочка", show_alert=True)
+        return
+    await state.update_data(child_gender=gender)
+
+    data = await state.get_data()
+    if data.get("child_name"):
+        # legacy-ребёнок — имя уже знаем, сразу к генерации.
+        await _run_generation(call, state, bot)
+        return
+
+    # Новый малыш — теперь имя.
+    await call.message.edit_text("🕯 Как зовут малыша? Напишите имя.")
+    await state.set_state(StoryWizard.waiting_child_name)
+    await call.answer()
+
+
 @router.message(StoryWizard.waiting_child_name)
-async def m_child_name(message: Message, state: FSMContext) -> None:
-    """Юзер ввёл имя ребёнка → спрашиваем пол."""
+async def m_child_name(message: Message, state: FSMContext, bot: Bot) -> None:
+    """Юзер ввёл имя ребёнка → запускаем генерацию (пол уже выбран
+    на шаге выше)."""
     raw = (message.text or "").strip()[:32]
     if not raw or not raw.replace("-", "").replace(" ", "").isalpha():
         await message.answer(
@@ -373,31 +446,9 @@ async def m_child_name(message: Message, state: FSMContext) -> None:
         return
     name = normalize_name(raw)  # ЛИза → Лиза, анна-мария → Анна-Мария
     # child_age=6 как единый дефолт; hero и theme_key пустые — downstream
-    # код умеет это обрабатывать (PDF-заголовок «Сказка для X», after_story_kb
-    # без «продолжить про X»).
+    # код умеет это обрабатывать. child_gender уже в state из cb_child_gender.
     await state.update_data(child_name=name, child_age=6, hero="", theme_key="")
-    await message.answer(
-        f"🕯 <b>{name}</b> — мальчик или девочка?",
-        reply_markup=gender_kb(),
-    )
-    await state.set_state(StoryWizard.waiting_child_gender)
-
-
-@router.callback_query(StoryWizard.waiting_child_gender, F.data.startswith("gender:"))
-async def cb_child_gender(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
-    """Юзер выбрал пол → запускаем генерацию.
-
-    Значения callback_data: «gender:male» / «gender:female». Это явный
-    источник правды для склонения имени, обращений к герою и пола
-    нарисованного ребёнка в иллюстрациях. Заменяет автоопределение по
-    словарю CIS-имён (которое промахивается на Тасях, Хрюшах, Кузях).
-    """
-    gender = call.data.split(":", 1)[1]
-    if gender not in ("male", "female"):
-        await call.answer("Выберите мальчик или девочка", show_alert=True)
-        return
-    await state.update_data(child_gender=gender)
-    await _run_generation(call, state, bot)
+    await _run_generation(message, state, bot)
 
 
 # cb_change_name и cb_child_age удалены в мае 2026 — шаг выбора возраста
@@ -715,6 +766,10 @@ async def _run_generation(
             user_id=u_db.id,
             child_name=data["child_name"],
             child_age=int(data.get("child_age") or 6),
+            # gender сохраняем явно — при следующем выборе этого имени
+            # из списка прежних мы не будем переспрашивать (см.
+            # _last_gender_for_name + cb_name_pick).
+            child_gender=data.get("child_gender"),
             hero=data["hero"],
             theme=data["theme_key"],
             length=length,

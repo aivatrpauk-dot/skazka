@@ -82,6 +82,12 @@ INLINE_MIGRATIONS = [
     # текст+картинку+аудио. Теперь продукт чище: одна PDF-книжка. Колонка
     # pdf_path хранит путь к ней.
     'ALTER TABLE stories ADD COLUMN IF NOT EXISTS pdf_path VARCHAR(256)',
+    # ─── Пол ребёнка (May 2026) ───
+    # Раньше автоопределялся по словарю CIS-имён. Теперь юзер указывает
+    # явно в визарде (см. handlers/story.py cb_child_gender). На имена
+    # из списка прежних подтягиваем последний gender по этому имени —
+    # не переспрашиваем (главная боль предыдущей итерации).
+    "ALTER TABLE stories ADD COLUMN IF NOT EXISTS child_gender VARCHAR(8)",
 ]
 
 
