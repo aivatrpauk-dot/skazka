@@ -16,7 +16,6 @@ from ..config import config
 from ..db import Session, Story, SubscriptionStatus, User
 from ..keyboards import (
     after_story_kb,
-    age_kb,
     daily_limit_kb,
     hero_kb,
     main_menu_kb,
@@ -327,19 +326,22 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.callback_query(F.data.startswith("name:pick:"))
-async def cb_name_pick(call: CallbackQuery, state: FSMContext) -> None:
-    """Юзер выбрал ИМЯ из списка прежних → сохраняем и идём к выбору возраста."""
+async def cb_name_pick(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    """Юзер выбрал ИМЯ из списка прежних → сразу запускаем генерацию.
+
+    Шаг выбора возраста («3-4» / «5-6 лет») убран в мае 2026 вместе с
+    возрастным сплитом storyteller-промпта — теперь все 6 анкеров пишут
+    для целевой аудитории 5-7 лет одинаково.
+    """
     name = call.data.split(":", 2)[2]
     if not name:
         await call.answer("Пустое имя", show_alert=True)
         return
-    await state.update_data(child_name=name)
-    await call.message.edit_text(
-        "Выбирайте версию, которая больше нравится ребёнку.",
-        reply_markup=age_kb(),
-    )
-    await state.set_state(StoryWizard.waiting_child_age)
-    await call.answer()
+    # child_age=6 как единый дефолт; hero и theme_key пустые — downstream
+    # код умеет это обрабатывать (PDF-заголовок «Сказка для X», after_story_kb
+    # без «продолжить про X»).
+    await state.update_data(child_name=name, child_age=6, hero="", theme_key="")
+    await _run_generation(call, state, bot)
 
 
 @router.callback_query(F.data == "name:new")
@@ -360,7 +362,13 @@ async def cb_name_new(call: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.message(StoryWizard.waiting_child_name)
-async def m_child_name(message: Message, state: FSMContext) -> None:
+async def m_child_name(message: Message, state: FSMContext, bot: Bot) -> None:
+    """Юзер ввёл имя ребёнка → сразу запускаем генерацию.
+
+    Шаг выбора возраста («3-4» / «5-6 лет») убран в мае 2026 вместе с
+    возрастным сплитом storyteller-промпта — теперь все 6 анкеров пишут
+    для целевой аудитории 5-7 лет одинаково.
+    """
     raw = (message.text or "").strip()[:32]
     if not raw or not raw.replace("-", "").replace(" ", "").isalpha():
         await message.answer(
@@ -368,61 +376,17 @@ async def m_child_name(message: Message, state: FSMContext) -> None:
         )
         return
     name = normalize_name(raw)  # ЛИза → Лиза, анна-мария → Анна-Мария
-    await state.update_data(child_name=name)
-    # Возраст спрашиваем как «версию» сказки — кнопками 3-4 / 5-6. От него
-    # зависит, какой промпт получит сказочник (toddler — проще и нежнее,
-    # kids — глубже и с миядзаковским сюром).
-    await message.answer(
-        "Выбирайте версию, которая больше нравится ребёнку.",
-        reply_markup=age_kb(),
-    )
-    await state.set_state(StoryWizard.waiting_child_age)
+    # child_age=6 как единый дефолт; hero и theme_key пустые — downstream
+    # код умеет это обрабатывать (PDF-заголовок «Сказка для X», after_story_kb
+    # без «продолжить про X»).
+    await state.update_data(child_name=name, child_age=6, hero="", theme_key="")
+    await _run_generation(message, state, bot)
 
 
-@router.callback_query(F.data == "story:change_name")
-async def cb_change_name(call: CallbackQuery, state: FSMContext) -> None:
-    """Юзер нажал «◀ Назад» в окне выбора возраста — хочет ввести имя
-    другого ребёнка вместо сохранённого. Чистим имя из state и просим
-    ввести новое.
-    """
-    await state.update_data(child_name=None)
-    await call.message.edit_text(
-        "🕯 Как зовут ребёнка? Напишите имя."
-    )
-    await state.set_state(StoryWizard.waiting_child_name)
-    await call.answer()
-
-
-@router.callback_query(StoryWizard.waiting_child_age, F.data.startswith("age:"))
-async def cb_child_age(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
-    """Юзер выбрал возрастную группу — сохраняем и запускаем генерацию.
-
-    Героя и тему НЕ спрашиваем — сказочник сам решает, кого позвать и о
-    чём рассказать сегодня. callback_data = «age:4» (toddler) / «age:6»
-    (kids). pick_storyteller_variant() в prompts.py рандомно выбирает
-    один из 6 стилевых анкеров (Винни-Пух / Маленький принц / Волшебные
-    бобы / Алиса / Команда друзей / Миядзаки), pick_params() выбирает
-    форму и зачин сегодняшней сказки из словарей.
-
-    hero и theme_key выставляем пустыми — downstream код умеет это
-    обрабатывать: PDF-заголовок становится «Ночная сказка для Маши»,
-    after_story_kb не показывает «продолжить про X».
-    """
-    try:
-        age = int(call.data.split(":", 1)[1])
-    except (ValueError, IndexError):
-        await call.answer("Неверный возраст", show_alert=True)
-        return
-    if age not in (4, 6):
-        await call.answer("Возраст должен быть 4 или 6", show_alert=True)
-        return
-
-    # Сохраняем возраст + заглушки для hero/theme_key, чтобы _run_generation
-    # и downstream код не падали на отсутствующих ключах.
-    await state.update_data(child_age=age, hero="", theme_key="")
-    await call.answer()
-    # Сразу запускаем генерацию — больше шагов в визарде нет.
-    await _run_generation(call, state, bot)
+# cb_change_name и cb_child_age удалены в мае 2026 — шаг выбора возраста
+# больше не нужен (см. m_child_name / cb_name_pick), а «◀ Назад» с него
+# тоже исчез вместе с самим экраном. Если когда-то понадобится вернуть
+# возрастной сплит, восстанавливать через git-историю.
 
 
 @router.callback_query(StoryWizard.waiting_hero, F.data.startswith("hero:"))
@@ -480,59 +444,81 @@ async def cb_theme(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     await _run_generation(call, state, bot)
 
 
-async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+async def _run_generation(
+    initiator: CallbackQuery | Message,
+    state: FSMContext,
+    bot: Bot,
+) -> None:
     """Запускает генерацию сказки с фиксированными параметрами:
-    length=medium (~5-6 минут чтения), полное качество (PDF + ambient + 3 картинки).
+    length=medium (~5-6 минут чтения), полное качество (PDF + 3 картинки).
 
-    Вызывается из cb_theme (новая сказка) и cb_story_continue (антология).
-    Длину больше не спрашиваем — стандарт: одна сказка на ночь, 5+ минут.
-    Параметр length оставлен в сигнатуре LLM для backward compat, но в
-    промпте длина зашита жёстко (см. SYSTEM_STORYTELLER → «ЖЁСТКАЯ ДЛИНА»).
+    initiator может быть CallbackQuery (юзер нажал кнопку — выбор имени из
+    сохранённых, или тема в gift-флоу) или Message (юзер ввёл новое имя
+    текстом). В первом случае мы редактируем сообщение бота на «зажигаю
+    свечи»; во втором — отправляем новое сообщение в чат.
+
+    Возрастной шаг убран в мае 2026 — все 6 storyteller-анкеров одинаково
+    хорошо пишут для 5-7 лет, спрашивать у родителя «3-4 или 5-6» больше
+    нет смысла.
     """
     length = "medium"
 
-    # Rate-limit перед дорогими API-вызовами (Gemini + FAL + ElevenLabs).
+    user_id = initiator.from_user.id
+    is_callback = isinstance(initiator, CallbackQuery)
+
+    # Rate-limit перед дорогими API-вызовами (LLM + FAL).
     # Защита от спама бесплатного триала и просто слишком частых нажатий.
     from ..services import check_story_limit
-    allowed, msg = check_story_limit(call.from_user.id)
+    allowed, msg = check_story_limit(user_id)
     if not allowed:
-        await call.answer(msg or "Слишком быстро", show_alert=True)
+        if is_callback:
+            await initiator.answer(msg or "Слишком быстро", show_alert=True)
+        else:
+            await initiator.answer(msg or "🕯 Слишком быстро. Подождите минуту.")
         return
 
     # ───── Лимит «одна сказка в день» per-user (с мая 2026) ─────
     # Защитная повторная проверка — основной блок стоит в cb_story_new
     # на входе, но если состояние FSM пережило перезапуск или юзер прошёл
     # через нестандартный путь — ловим тут. Админы обходят.
-    u_pre = await _get_user(call.from_user.id)
+    u_pre = await _get_user(user_id)
     is_admin = u_pre.telegram_id in config.admin_ids
     if not is_admin and await _was_story_today(u_pre.id):
-        await call.message.edit_text(
+        limit_text = (
             "🌙 Сегодняшняя сказка уже сложилась. Пусть она звучит "
             "перед сном — это и есть наш ритуал.\n\n"
-            "Завтра — новая.",
-            reply_markup=daily_limit_kb(),
+            "Завтра — новая."
         )
+        if is_callback:
+            await initiator.message.edit_text(limit_text, reply_markup=daily_limit_kb())
+            await initiator.answer()
+        else:
+            await initiator.answer(limit_text, reply_markup=daily_limit_kb())
         await state.clear()
-        await call.answer()
         return
 
     data = await state.get_data()
     await state.clear()
 
-    await call.message.edit_text(
+    progress_text = (
         "🕯 Зажигаю свечи в библиотеке. Пара минут, и я принесу Вам "
         "сегодняшнюю сказку."
     )
-    await call.answer()
+    if is_callback:
+        await initiator.message.edit_text(progress_text)
+        await initiator.answer()
+        status_msg: Message = initiator.message
+    else:
+        status_msg = await initiator.answer(progress_text)
 
-    u = await _get_user(call.from_user.id)
+    u = await _get_user(user_id)
 
     # Определяем источник, из которого пойдёт списание. Если источника нет —
     # этот код не должен был сюда дойти (фильтры выше отсеивают), но на всякий
     # случай защищаемся paywall'ом.
     source = _allowed_source(u)
     if source is None:
-        await call.message.answer(_paywall_reason_text(u), reply_markup=paywall_kb())
+        await status_msg.answer(_paywall_reason_text(u), reply_markup=paywall_kb())
         return
     is_paid = source in (SOURCE_PACK, SOURCE_SUBSCRIPTION, SOURCE_SINGLE)
     is_demo_first = source == SOURCE_FREE and (u.free_stories_used or 0) == 0
@@ -570,7 +556,7 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         )
     except Exception as e:
         logger.exception("Ошибка генерации сказки: %s", e)
-        await call.message.answer(
+        await status_msg.answer(
             "🕯 Простите — у нашего сказочника погасли все свечи в эту минуту. "
             "Дайте ему собраться и попробуйте через пару минут заново."
         )
@@ -630,7 +616,7 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # который только что написал. Если scenes=None (сказочник забыл
     # блок или JSON битый) — generate_three_illustrations нарисует
     # без сюжетного мотива, чисто по stage-промптам.
-    await bot.send_chat_action(call.message.chat.id, "upload_photo")
+    await bot.send_chat_action(status_msg.chat.id, "upload_photo")
     illustrations = await generate_three_illustrations(
         data["hero"], data["theme_key"],
         scenes=scenes,
@@ -659,7 +645,7 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # Сначала отправляем обложку как красивое превью
     if cover_path and cover_path.exists():
         try:
-            await call.message.answer_photo(FSInputFile(str(cover_path)))
+            await status_msg.answer_photo(FSInputFile(str(cover_path)))
         except Exception as e:
             logger.warning("Cover send failed: %s", e)
 
@@ -682,7 +668,7 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
                 safe_name = f"{_safe}.pdf"
             else:
                 safe_name = f"{data['child_name']} & {data['hero']}.pdf".replace("/", "-")
-            await call.message.answer_document(
+            await status_msg.answer_document(
                 FSInputFile(str(pdf_path), filename=safe_name),
                 caption=f"📖 Сказка на сегодня для {_gen(data['child_name'])}",
             )
@@ -693,27 +679,24 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # Колонка next_episode_teaser больше не используется (модель антологии вместо
     # обещаний). Оставлена в схеме на случай если когда-то понадобится.
     async with Session() as s:
-        u_db = (await s.execute(select(User).where(User.telegram_id == call.from_user.id))).scalar_one()
+        u_db = (await s.execute(select(User).where(User.telegram_id == user_id))).scalar_one()
         # Списываем из источника, который мы определили перед генерацией.
         # _consume_story_source также проставит last_story_at как
         # аналитический след (не блокирующий — главный лимит per-child).
         _consume_story_source(u_db, source)
-        # child_name пишем только при первом разе (он редко меняется),
-        # а child_age — каждый раз, потому что:
-        # - возраст определяет выбор промпта (3-4 toddler / 5-6 kids);
-        # - у родителя может быть несколько детей разного возраста;
-        # - ребёнок может вырасти из toddler-промпта в kids-промпт.
-        # И child_name, и child_age перезаписываем КАЖДЫЙ раз, потому что:
-        # - у родителя может быть несколько детей разного возраста и имени;
-        # - после нажатия «Назад» юзер вводит другое имя — оно должно стать
-        #   новым «дефолтом» при следующем заходе в визард;
-        # - возраст определяет выбор промпта (3-4 toddler / 5-6 kids).
+        # child_name перезаписываем КАЖДЫЙ раз — у родителя может быть
+        # несколько детей разного имени, после нажатия «Назад» юзер вводит
+        # другое имя, оно должно стать новым «дефолтом» при следующем заходе.
+        # child_age = 6 — единый дефолт для всего продукта (5-7 лет по
+        # новому позиционированию). Возрастной шаг визарда убран в мае
+        # 2026 вместе с возрастным сплитом storyteller-промпта; колонка
+        # в БД остаётся для legacy-аналитики.
         u_db.child_name = data["child_name"]
-        u_db.child_age = int(data.get("child_age") or 5)
+        u_db.child_age = int(data.get("child_age") or 6)
         story_obj = Story(
             user_id=u_db.id,
             child_name=data["child_name"],
-            child_age=int(data.get("child_age") or 5),
+            child_age=int(data.get("child_age") or 6),
             hero=data["hero"],
             theme=data["theme_key"],
             length=length,
@@ -741,14 +724,14 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
 
         if has_more_free:
             child_name = data["child_name"]
-            await call.message.answer(
+            await status_msg.answer(
                 f"🌙 Тёплых снов, {child_name}.\n\n"
                 f"Завтра вечером, когда на небе зажгутся первые звёзды, "
                 f"новая сказка будет ждать Вас здесь. До нашей встречи.",
                 reply_markup=after_story_kb(story_id, has_sequel=True, hero=data["hero"], child_name=child_name),
             )
             from .feedback import maybe_ask_for_feedback
-            await maybe_ask_for_feedback(call.message, call.from_user.id)
+            await maybe_ask_for_feedback(status_msg, user_id)
             return
 
         # Закончилась бесплатная (для модели "первая бесплатно" — после первой
@@ -756,10 +739,10 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
         # Юзер натолкнётся на paywall сам, когда захочет вторую сказку.
         # Сейчас — только мягкий запрос критики за бонусную сказку.
         from .feedback import maybe_ask_for_feedback
-        await maybe_ask_for_feedback(call.message, call.from_user.id)
+        await maybe_ask_for_feedback(status_msg, user_id)
         return
 
-    await call.message.answer(
+    await status_msg.answer(
         "🌙 Готово. Тёплых снов Вам и малышу.",
         reply_markup=after_story_kb(story_id, has_sequel=True, hero=data["hero"], child_name=data["child_name"]),
     )
