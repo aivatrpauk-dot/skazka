@@ -204,6 +204,7 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
             "", "",
             scenes=scenes,
             child_name=params["recipient_name"],
+            child_gender=params.get("recipient_gender"),
         )
     )
 

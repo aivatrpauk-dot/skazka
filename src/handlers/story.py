@@ -690,6 +690,7 @@ async def _run_generation(
         data["hero"], data["theme_key"],
         scenes=scenes,
         child_name=data["child_name"],
+        child_gender=data.get("child_gender"),
     )
 
     # Собираем PDF

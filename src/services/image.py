@@ -30,6 +30,7 @@ from ..prompts import (
     IMAGE_STYLE_BASE,
     IMAGE_STYLE_VARIANTS,
     THEME_TO_EN,
+    pick_hero_visual,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,16 +66,22 @@ async def generate_cover(
     scene_description: str | None = None,
     stage: str | None = None,
     style_variant: str | None = None,
+    child_gender: str | None = None,
+    hero_visual: str | None = None,
 ) -> Path | None:
     """Генерирует иллюстрацию для PDF-книжки.
 
     scene_description — одно английское предложение от сказочника-Claude,
-    описывающее одну из трёх параллельных сцен мира сказки.
+        описывающее одну из трёх параллельных сцен мира сказки.
     stage — legacy, больше не используется.
     style_variant — ключ из IMAGE_STYLE_VARIANTS (vast_world, busy_scene,
-            magic_moment, cozy_interior, journey, character_focus).
-            Если None — выбирается рандомно. Это даёт ротацию композиций
-            и убирает эффект «фотоальбом одного персонажа».
+        magic_moment, cozy_interior, journey, character_focus).
+        Если None — выбирается рандомно.
+    child_gender — "male" / "female". Если задан и hero_visual=None,
+        собираем hero-описание через pick_hero_visual(child_gender).
+    hero_visual — готовая строка hero-hint (если генератор сцены хочет
+        зафиксировать тот же визуал на все три картинки сказки).
+        Приоритетнее child_gender.
     """
     _ = THEME_TO_EN.get(theme_key, "kindness and warmth")  # legacy theme
     _ = stage  # больше не используется
@@ -87,6 +94,13 @@ async def generate_cover(
         style_prompt = IMAGE_STYLE_VARIANTS[chosen_key]
         logger.info("Image style variant: %s (random)", chosen_key)
 
+    # Hero-hint — тип главного героя (мальчик/девочка/фея/...). Это
+    # ключевой anti-Brambly-Hedge инструмент: без него натренированный
+    # на мышах style_id тянет в зверушек в одежде.
+    if hero_visual is None:
+        hero_visual = pick_hero_visual(child_gender)
+    logger.info("Hero visual hint: %s", hero_visual[:60].replace("\n", " "))
+
     # Чистый художественный промпт (см. IMAGE_STYLE_BASE) без технических
     # guard'ов. Раньше тут был «// wordless, no text.» суффикс — его
     # убрали ради pure-теста авторского промпта. Если Recraft начнёт
@@ -97,25 +111,28 @@ async def generate_cover(
     # Сцена-описание идёт как «Сцена: <текст>» после стиля. Это контекст
     # происходящего, не команда «нарисуй именно это» — финальную композицию
     # художник выбирает сам.
+    # Склейка: style + hero + scene. Hero идёт ПОСЛЕ style — так у Recraft
+    # он перебивает дефолтный «зверь в одежде» из натренированного style_id.
+    # Scene — последней, она про конкретный момент мира.
     scene_hint = (scene_description or "").strip()
-    if scene_hint:
-        # Бюджет: 975 (под Recraft Direct 980 с запасом 5) − стиль − wrap − \n\n.
-        wrap = "Scene: "
-        budget = 975 - len(style_prompt) - len(wrap) - 2
-        if budget < 5:
-            # Стиль почти упёрся в лимит — мотив не влезет.
-            prompt = style_prompt
-        else:
-            if len(scene_hint) > budget:
-                # Обрезаем по последнему пробелу, не рвём слово.
-                cut = scene_hint[: budget - 1].rstrip()
-                space = cut.rfind(" ")
-                if space > budget * 0.6:
-                    cut = cut[:space]
-                scene_hint = cut + "…"
-            prompt = f"{style_prompt}\n\n{wrap}{scene_hint}"
-    else:
-        prompt = style_prompt
+    # Бюджет: 975 (под Recraft Direct 980 с запасом 5) − style − hero
+    # − wrap-блоки − \n\n разделители.
+    hero_block = (hero_visual or "").strip()
+    fixed_overhead = len(style_prompt) + len(hero_block) + len("Scene: ") + 4
+    budget_for_scene = 975 - fixed_overhead
+
+    parts = [style_prompt]
+    if hero_block:
+        parts.append(hero_block)
+    if scene_hint and budget_for_scene > 5:
+        if len(scene_hint) > budget_for_scene:
+            cut = scene_hint[: budget_for_scene - 1].rstrip()
+            space = cut.rfind(" ")
+            if space > budget_for_scene * 0.6:
+                cut = cut[:space]
+            scene_hint = cut + "…"
+        parts.append(f"Scene: {scene_hint}")
+    prompt = "\n\n".join(parts)
     # Логируем хвост prompt'а (последние 120 char) — там лежит scene hint
     # после стиля. Помогает увидеть, что РЕАЛЬНО попадает в Recraft:
     # одинаковый ли это хвост у трёх картинок (тогда они сольются) или
@@ -165,42 +182,40 @@ async def generate_three_illustrations(
     *,
     scenes: dict[str, str] | None,
     child_name: str | None = None,
+    child_gender: str | None = None,
 ) -> dict[str, Path | None]:
     """Генерирует 3 иллюстрации для PDF-книжки: обложка, кульминация, финал.
 
     Принимает scenes = {"opening": "...", "climax": "...", "ending": "..."}.
     Каждая сцена идёт в свой generate_cover() параллельно.
 
-    Если scenes=None — fallback: для всех трёх используется один и тот же
-    placeholder из FALLBACK_SCENE_TEMPLATE (картинки будут похожи, но не сорвут
-    PDF полностью).
+    child_gender — "male" / "female". Передаётся в pick_hero_visual для
+    выбора облика главного героя (мальчик/девочка/фея/...). Один и тот
+    же hero_visual фиксируется на все 3 картинки одной сказки, чтобы
+    герой не менялся между разворотами книжки.
+
+    Если scenes=None — fallback: картинки рисуются без сюжетного мотива,
+    только по style+hero.
 
     Возвращает dict {"opening": Path|None, "climax": Path|None, "ending": Path|None}.
-    Каждая может быть None если соответствующая генерация упала — PDF умеет
-    рендериться без любой из иллюстраций (просто пропустит страницу).
     """
     import asyncio
-    # Если сцен нет — используем один и тот же fallback для всех (хотя бы что-то).
     if not scenes:
         scenes = {"opening": None, "climax": None, "ending": None}
 
-    # Гендер-префикс УБРАН: при наличии антропоморфного героя сказки
-    # (Зайчик/Котик/...) Recraft пытается совместить «boy is main
-    # character» с трейн-стилем (мыши/зайцы в одежде), и получаются
-    # гибриды — ребёнок с заячьими ушами и т.п. Было хуже чем без
-    # префикса. Гендер пусть лучше иногда не сходится в редких случаях,
-    # чем гибриды в каждой второй картинке.
-    _ = child_name  # пока не используется, оставлено в сигнатуре
+    _ = child_name  # пока не используется
 
-    def _with_gender(scene_desc: str | None) -> str | None:
-        return scene_desc
+    # Фиксируем один hero_visual на все 3 картинки — чтобы Маша на
+    # обложке не превратилась в фею к концу книжки. Ротация типа героя
+    # происходит МЕЖДУ сказками, не внутри.
+    fixed_hero_visual = pick_hero_visual(child_gender)
+    logger.info(
+        "Fixed hero visual for this story (gender=%s): %s…",
+        child_gender, fixed_hero_visual[:50].replace("\n", " "),
+    )
 
     # 3 РАЗНЫХ style_variant без повторов — каждая из трёх картинок
-    # одной книжки в своём регистре. Это даёт визуальную вариативность
-    # ВНУТРИ одной сказки: один разворот вид сверху на мир, другой —
-    # крупный план персонажа, третий — магический момент. Как в
-    # настоящей детской книжке, где соседние развороты не одинаковы.
-    # Между разными сказками — тоже разные тройки, естественно.
+    # одной книжки в своём регистре композиции.
     variant_keys = list(IMAGE_STYLE_VARIANTS.keys())
     chosen_variants = _random.sample(variant_keys, k=min(3, len(variant_keys)))
     logger.info(
@@ -217,9 +232,10 @@ async def generate_three_illustrations(
         try:
             return await generate_cover(
                 hero, theme_key,
-                scene_description=_with_gender(scene_desc),
+                scene_description=scene_desc,
                 stage=stage,
                 style_variant=variants_per_stage[stage],
+                hero_visual=fixed_hero_visual,
             )
         except Exception as e:
             logger.warning("Иллюстрация %s упала: %s", stage, e)
