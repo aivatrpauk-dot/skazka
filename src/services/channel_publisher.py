@@ -62,10 +62,10 @@ _CHANNEL_NAMES = [
     "Бубуля", "Чудик", "Каркуша", "Хрюша",
 ]
 
-# Возраст канальной сказки — серединка нашего диапазона 3-6.
-# 5 лет = старший промпт (SYSTEM_STORYTELLER_5_6), более насыщенный текст,
-# который и для просмотра в канале выглядит ярче.
-_CHANNEL_CHILD_AGE = 5
+# Возраст канальной сказки — серединка целевого диапазона 5-7.
+# Возрастной сплит больше не используется (см. prompts.py rev. May 2026),
+# но число всё ещё попадает в user_message как контекст для модели.
+_CHANNEL_CHILD_AGE = 6
 
 
 # ─────────────── Caption-шаблоны ───────────────
@@ -180,21 +180,16 @@ async def publish_to_channel(bot: Bot, *, force: bool = False) -> bool:
         return True  # уже сделано, не ошибка
 
     try:
-        # 1. Выбираем имя/возраст/параметры
+        # 1. Выбираем имя/возраст/параметры. used-массивы None — канал
+        # не отслеживает ротацию между постами (это разные дети-герои).
         name = random.choice(_CHANNEL_NAMES)
         params = pick_params(
-            child_age=_CHANNEL_CHILD_AGE,
             used_architectures=None,
-            used_humors=None,
             used_openings=None,
-            used_tones=None,
-            last_category=None,
         )
         logger.info(
-            "Channel: имя=%s, возраст=%d, форма=%s, юмор=%s, жанр=%s, "
-            "зачин=%s, интонация=%s",
-            name, _CHANNEL_CHILD_AGE,
-            params.form, params.humor, params.genre, params.opening, params.tone,
+            "Channel: имя=%s, возраст=%d, форма=%s, зачин=%s",
+            name, _CHANNEL_CHILD_AGE, params.form, params.opening,
         )
 
         # 2. Генерируем сказку (тот же сказочник что и платный продукт),
@@ -206,10 +201,7 @@ async def publish_to_channel(bot: Bot, *, force: bool = False) -> bool:
             child_name=name,
             child_age=_CHANNEL_CHILD_AGE,
             form=params.form,
-            humor=params.humor,
-            genre=params.genre,
             opening=params.opening,
-            tone=params.tone,
             paid_quality=True,
             is_channel_post=True,
         )

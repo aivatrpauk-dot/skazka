@@ -33,7 +33,7 @@ from ..prompts import (
     build_story_user_message,
     parse_scenes_block,
     parse_story_title,
-    pick_storyteller_concept,
+    pick_storyteller_variant,
 )
 
 logger = logging.getLogger(__name__)
@@ -255,10 +255,7 @@ async def generate_story(
     child_name: str,
     child_age: int,
     form: str,
-    humor: str,
-    genre: str,
     opening: str,
-    tone: str,
     paid_quality: bool = True,
     is_channel_post: bool = False,
     # legacy params — больше не используются, оставлены для совместимости
@@ -274,32 +271,31 @@ async def generate_story(
     None, если сказочник не выдал блок ---SCENES--- (тогда картинки
     рисуются без мотива).
 
-    Параметры сказки (form, humor, genre, opening, tone) выбирает БОТ
-    через src/services/story_params.pick_params() ДО вызова этой
-    функции — он же сохраняет историю used-массивов в БД после
-    успешной генерации. Модель здесь не выбирает архитектуру, не
-    пишет служебный маркер, просто получает 5 слов как направление
-    и пишет одну сказку.
+    Параметры сказки (form, opening) выбирает БОТ через
+    src/services/story_params.pick_params() ДО вызова этой функции —
+    он же сохраняет историю used-массивов в БД после успешной
+    генерации. Модель получает 2 слова как направление и пишет одну
+    сказку.
 
-    Это смена парадигмы от старой схемы (модель выбирала из списков
-    + писала маркер первой строкой + мы парсили + сохраняли). Теперь:
-    бот → выбирает → сообщает модели готовое.
+    Стиль сказки задаётся одним из 6 system-промптов из
+    prompts.STORYTELLER_VARIANTS — pick_storyteller_variant() рандомно
+    выбирает анкер (Винни-Пух / Маленький принц / Волшебные бобы /
+    Алиса / Команда друзей / Миядзаки). Жанр, тип юмора и интонация
+    теперь часть стиля анкера, не отдельные параметры.
 
     paid_quality — для Gemini fallback: True = Flash, False = Flash-Lite.
     Для Anthropic игнорируется (всегда полное качество Sonnet 4.6).
     """
     _ = hero, theme_key, length, previous_summary  # legacy, не используется
 
-    # Концептуальный промпт — статический, полностью кэшируется
-    # Anthropic prompt caching (нет {placeholder}, идентичный текст
-    # для всех юзеров).
-    concept_prompt = pick_storyteller_concept(child_age)
-    concept_label = "3-4 (toddler)" if child_age <= 4 else "5-6 (senior)"
+    # Стилевой анкер: один из 6 полностью независимых system-промптов.
+    # Каждый идентичен от вызова к вызову — Anthropic prompt caching
+    # работает на каждом варианте независимо (когда повторяется тот же
+    # ключ в течение 5-минутного TTL).
+    variant_key, concept_prompt = pick_storyteller_variant()
     logger.info(
-        "Сказка для %s, %d лет: concept=%s, форма=%s, юмор=%s, "
-        "жанр=%s, зачин=%s, интонация=%s",
-        child_name, child_age, concept_label,
-        form, humor, genre, opening, tone,
+        "Сказка для %s, %d лет: anchor=%s, форма=%s, зачин=%s",
+        child_name, child_age, variant_key, form, opening,
     )
 
     # Гендер-префикс для имени. Если наш словарь CIS-имён знает гендер
@@ -314,25 +310,12 @@ async def generate_story(
     else:
         _name_intro = "ребёнка"
 
-    # Тональная преамбула: рандомный вариант из 6 (Винни-Пух / Маленький
-    # принц / приключение / хармсовская нелепица / бытовой уют / магия
-    # в обычном мире). Это уравновешивает дефолтный тяг сказочника к
-    # «метафоре и глубине во всём», даёт реальное разнообразие тонов
-    # между сказками.
-    from ..prompts import pick_tonal_variant
-    tonal_key, tonal_text = pick_tonal_variant()
-    logger.info("Tonal variant for story: %s", tonal_key)
-
     user_message = build_story_user_message(
         name_intro=_name_intro,
         child_name=child_name,
         child_age=child_age,
         form=form,
-        humor=humor,
-        genre=genre,
         opening=opening,
-        tone=tone,
-        tonal_variant=tonal_text,
     )
 
     # Канальный режим: дописываем инструкцию переопределения финала +

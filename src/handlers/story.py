@@ -399,9 +399,10 @@ async def cb_child_age(call: CallbackQuery, state: FSMContext, bot: Bot) -> None
 
     Героя и тему НЕ спрашиваем — сказочник сам решает, кого позвать и о
     чём рассказать сегодня. callback_data = «age:4» (toddler) / «age:6»
-    (kids). pick_storyteller_concept() в prompts.py выбирает концепт-
-    промпт по возрасту, pick_params() в story_params.py выбирает 5
-    параметров сегодняшней сказки из словарей.
+    (kids). pick_storyteller_variant() в prompts.py рандомно выбирает
+    один из 6 стилевых анкеров (Винни-Пух / Маленький принц / Волшебные
+    бобы / Алиса / Команда друзей / Миядзаки), pick_params() выбирает
+    форму и зачин сегодняшней сказки из словарей.
 
     hero и theme_key выставляем пустыми — downstream код умеет это
     обрабатывать: PDF-заголовок становится «Ночная сказка для Маши»,
@@ -539,26 +540,21 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     full_quality = True
 
     # ─ Выбор параметров сказки на стороне бота («казино»).
-    # Раньше: модель сама выбирала архитектуру из 25 шаблонов и писала
-    # маркер первой строкой, мы парсили и сохраняли. Теперь: бот сам
-    # выбирает 5 параметров (форма/юмор/жанр/зачин/интонация) из словарей,
-    # исключая всё, что использовалось в текущем цикле этого ребёнка.
-    # Модель просто получает 5 слов и пишет одну сказку.
+    # Раньше: модель сама выбирала архитектуру и писала маркер первой
+    # строкой, мы парсили и сохраняли. Теперь: бот сам выбирает 2
+    # параметра (форма + зачин) из словарей, исключая всё, что
+    # использовалось в текущем цикле этого ребёнка. Юмор/жанр/интонация
+    # были убраны — это теперь часть стилевого system-анкера (см.
+    # prompts.STORYTELLER_VARIANTS, май 2026).
     from ..services.story_params import pick_params
     child_age_int = int(data.get("child_age") or 5)
     params = pick_params(
-        child_age=child_age_int,
         used_architectures=u.used_architectures or [],
-        used_humors=u.used_humors or [],
         used_openings=u.used_openings or [],
-        used_tones=u.used_tones or [],
-        last_category=u.last_story_category,
     )
     logger.info(
-        "Параметры сказки для user=%s: форма=%s, юмор=%s, жанр=%s, "
-        "зачин=%s, интонация=%s (cat=%s)",
-        u.telegram_id, params.form, params.humor, params.genre,
-        params.opening, params.tone, params.new_category,
+        "Параметры сказки для user=%s: форма=%s, зачин=%s",
+        u.telegram_id, params.form, params.opening,
     )
 
     try:
@@ -566,10 +562,7 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
             child_name=data["child_name"],
             child_age=child_age_int,
             form=params.form,
-            humor=params.humor,
-            genre=params.genre,
             opening=params.opening,
-            tone=params.tone,
             paid_quality=full_quality,
             hero=data["hero"],
             theme_key=data["theme_key"],
@@ -587,23 +580,19 @@ async def _run_generation(call: CallbackQuery, state: FSMContext, bot: Bot) -> N
     # Делаем СРАЗУ после успешной генерации, до длинного пайплайна
     # PDF/картинок — если что-то ниже упадёт, ротация всё равно сдвинется
     # (пользователю не выпадет та же комбинация подряд).
-    # Legacy-колонки last_story_architecture/humor_register/group/category
-    # тоже обновляем — для дашбордов и обратной совместимости.
+    # Legacy-колонки used_humors/used_tones/last_story_category/
+    # last_story_humor_register больше не пишем (всё это покрыто
+    # анкерами в system-промпте). Колонки в БД остаются как NULL для
+    # обратной совместимости — миграцию не делаем.
     async with Session() as s:
-        # Извлекаем последний индекс архитектуры из массива (для legacy)
         last_arch_idx = params.new_used_architectures[-1] if params.new_used_architectures else None
-        last_humor_idx = params.new_used_humors[-1] if params.new_used_humors else None
         await s.execute(
             update(User)
             .where(User.id == u.id)
             .values(
                 used_architectures=params.new_used_architectures,
-                used_humors=params.new_used_humors,
                 used_openings=params.new_used_openings,
-                used_tones=params.new_used_tones,
-                last_story_category=params.new_category,
                 last_story_architecture=last_arch_idx,
-                last_story_humor_register=last_humor_idx,
             )
         )
         await s.commit()
