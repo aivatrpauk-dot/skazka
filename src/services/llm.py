@@ -27,9 +27,6 @@ from ..config import config
 from ..prompts import (
     EXTRACT_SCENE_PROMPT,
     EXTRACT_THREE_SCENES_PROMPT,
-    SERIES_CONTEXT_TEMPLATE,
-    SYSTEM_GIFT_STORYTELLER,
-    THEME_CHOICES,
     build_story_user_message,
     parse_scenes_block,
     parse_story_title,
@@ -256,6 +253,7 @@ async def generate_story(
     child_age: int,
     form: str,
     opening: str,
+    child_gender: str | None = None,
     paid_quality: bool = True,
     is_channel_post: bool = False,
     # legacy params — больше не используются, оставлены для совместимости
@@ -298,17 +296,22 @@ async def generate_story(
         child_name, child_age, variant_key, form, opening,
     )
 
-    # Гендер-префикс для имени. Если наш словарь CIS-имён знает гендер
-    # (Амина, Айдар, Тимур, Айгуль), подставляем «девочки» или «мальчика»
-    # в первое предложение user_message. Если неизвестен — нейтральное
-    # «ребёнка», petrovich/pymorphy сами справятся со склонением.
-    from ..utils import detect_name_gender as _detect_gender
-    _gender_hint = _detect_gender(child_name)
-    if _gender_hint is not None:
-        from petrovich.enums import Gender as _G
-        _name_intro = "девочки" if _gender_hint == _G.FEMALE else "мальчика"
+    # Гендер для имени. С мая 2026 юзер указывает пол явно через
+    # gender_kb (см. handlers/story.py cb_child_gender). Если по какой-то
+    # причине gender пришёл None — fallback на словарь CIS-имён, и в
+    # самом крайнем случае — нейтральное «ребёнка».
+    if child_gender == "female":
+        _name_intro = "девочки"
+    elif child_gender == "male":
+        _name_intro = "мальчика"
     else:
-        _name_intro = "ребёнка"
+        from ..utils import detect_name_gender as _detect_gender
+        _gender_hint = _detect_gender(child_name)
+        if _gender_hint is not None:
+            from petrovich.enums import Gender as _G
+            _name_intro = "девочки" if _gender_hint == _G.FEMALE else "мальчика"
+        else:
+            _name_intro = "ребёнка"
 
     user_message = build_story_user_message(
         name_intro=_name_intro,
@@ -430,45 +433,91 @@ async def generate_story(
 async def generate_gift_story(
     *,
     recipient_name: str,
-    recipient_age: int,
-    hero: str,
-    theme_key: str,
+    recipient_gender: str,   # "male" / "female"
     personal_note: str,
-) -> str:
-    """Подарочная сказка через GIFT-промпт. Кэширование менее эффективно
-    (юзер редко делает несколько подарков подряд), но logic та же."""
-    # THEME_CHOICES хранит 3 элемента: label, desc, title_phrase.
-    # Для LLM-промпта нам нужны первые два, третий используется в PDF-заголовке.
-    theme_label, theme_desc = THEME_CHOICES[theme_key][:2]
-    format_params = {
-        "recipient_name": recipient_name,
-        "recipient_age": recipient_age,
-        "hero": hero,
-        "theme": f"{theme_label} — {theme_desc}",
-        "personal_note": personal_note,
-    }
-    user_message = "Напиши сказку-подарок. Только текст сюжета."
+) -> tuple[str, str | None, dict[str, str] | None]:
+    """Подарочная сказка.
+
+    С мая 2026 gift использует ту же storyteller-инфраструктуру что и
+    обычная сказка: pick_storyteller_variant() выбирает один из 6
+    стилевых анкеров, scenes-блок генерится сказочником. Отличие — в
+    user_message добавляется блок про дарителя и его послание, и
+    сказочник вплетает смысл послания в финал, не цитируя дословно.
+
+    Возвращает (текст_без_служебных_блоков, название, scenes-dict).
+    Структурно идентично generate_story.
+
+    SYSTEM_GIFT_STORYTELLER и параметры hero/theme/recipient_age убраны
+    — для дарителя осталось три самые личные вещи (имя, пол, послание),
+    остальное (герой, тема, сюжет) сказочник придумывает сам.
+    """
+    # Стилевой анкер — один из 6 как и для обычной сказки.
+    variant_key, concept_prompt = pick_storyteller_variant()
+    logger.info(
+        "Подарочная сказка для %s (%s): anchor=%s",
+        recipient_name, recipient_gender, variant_key,
+    )
+
+    name_intro = "девочки" if recipient_gender == "female" else "мальчика"
+    # child_age для gift фиксируем как 6 (целевая аудитория продукта 5-7).
+    user_message = (
+        f"Напиши сказку-подарок для {name_intro} по имени {recipient_name}, "
+        f"6 лет.\n\n"
+        f"Это подарок от близкого человека (родителя, бабушки, дяди — "
+        f"кого-то родного). Они оставили личное послание для {recipient_name}:\n"
+        f"«{personal_note}»\n\n"
+        f"Вплети СМЫСЛ этого послания в финал сказки — не цитируй "
+        f"дословно, не превращай в мораль, а пусть он проступит через "
+        f"финальные строки, обращённые к {recipient_name}. Сегодня форма "
+        f"и герой — на твоё усмотрение.\n\n"
+        "Не пиши служебный маркер первой строкой — только название и "
+        "текст сказки."
+    )
 
     provider = config.llm_provider
-    if provider == "anthropic":
-        text = await _generate_anthropic(
-            system_template=SYSTEM_GIFT_STORYTELLER,
-            format_params=format_params,
-            user_message=user_message,
-            temperature=0.9,
-        )
-    else:
-        full_system = SYSTEM_GIFT_STORYTELLER.format(**format_params)
-        text = await _generate_gemini(
-            system_prompt=full_system,
-            user_message=user_message,
-            model_name=config.gemini_model_paid,
-            temperature=0.9,
-        )
+    text = ""
+    try:
+        if provider == "anthropic":
+            text = await _generate_anthropic(
+                system_template=concept_prompt,
+                format_params={},
+                user_message=user_message,
+                temperature=0.9,
+            )
+        else:
+            text = await _generate_gemini(
+                system_prompt=concept_prompt,
+                user_message=user_message,
+                model_name=config.gemini_model_paid,
+                temperature=0.9,
+            )
+    except Exception as e:
+        logger.exception("LLM %s упал на gift-сказке: %s", provider, e)
+        # Fallback на другого провайдера если есть ключ
+        if provider == "anthropic" and config.gemini_api_key:
+            text = await _generate_gemini(
+                system_prompt=concept_prompt,
+                user_message=user_message,
+                model_name=config.gemini_model_paid,
+                temperature=0.9,
+            )
+        elif provider == "gemini" and config.anthropic_api_key:
+            text = await _generate_anthropic(
+                system_template=concept_prompt,
+                format_params={},
+                user_message=user_message,
+                temperature=0.9,
+            )
+        else:
+            raise
 
     if not text:
         raise RuntimeError("LLM вернул пустой ответ")
-    return _clean_story_text(text)
+
+    # Парсим scenes-блок и название — те же функции что в generate_story.
+    text, scenes = parse_scenes_block(text)
+    cleaned, title = parse_story_title(text)
+    return _clean_story_text(cleaned), title, scenes
 
 
 # ─────────────────── Служебные мини-вызовы ───────────────────

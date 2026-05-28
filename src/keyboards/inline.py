@@ -47,20 +47,24 @@ def name_choice_kb(names: list[str]) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def age_kb() -> InlineKeyboardMarkup:
-    """Клавиатура выбора возраста: 3-4 или 5-6 лет.
-    Возраст определяет, какой промпт получит сказочник:
-    - 3-4 → toddler-промпт (8 архитектур, проще, обязательная счастливая развязка)
-    - 5-6 → основной промпт (25 архитектур, сюрреализм, философская грань)
-    «Назад» ведёт на смену имени ребёнка (story:change_name), а не на cancel
-    — потому что текст приглашения «нажмите Назад и впишите имя» это и обещал.
+def gender_kb() -> InlineKeyboardMarkup:
+    """Клавиатура выбора пола ребёнка — мальчик / девочка.
+
+    Используется в обоих флоу (story + gift). Без варианта «не указывать»:
+    пол важен для склонения имени, обращения к герою («он/она»), и
+    выбора пола героя на иллюстрациях. Лучше спросить явно, чем
+    угадывать из имени (Тася, Хрюша, Кузя могут быть как м, так и ж).
     """
     kb = InlineKeyboardBuilder()
-    kb.button(text="👶 3-4 года", callback_data="age:4")
-    kb.button(text="🧒 5-6 лет", callback_data="age:6")
-    kb.button(text="◀ Назад", callback_data="story:change_name")
-    kb.adjust(2, 1)
+    kb.button(text="👦 Мальчик", callback_data="gender:male")
+    kb.button(text="👧 Девочка", callback_data="gender:female")
+    kb.adjust(2)
     return kb.as_markup()
+
+
+# age_kb удалена в мае 2026 — возрастной шаг убран из обоих флоу
+# (см. m_child_name / m_recipient_name). Если когда-то понадобится
+# вернуть возрастной сплит — восстанавливать через git-историю.
 
 
 def hero_kb() -> InlineKeyboardMarkup:

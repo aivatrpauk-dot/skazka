@@ -1,7 +1,7 @@
 from .inline import (
     main_menu_kb,
     name_choice_kb,
-    age_kb,
+    gender_kb,
     hero_kb,
     theme_kb,
     length_kb,
@@ -14,7 +14,7 @@ from .inline import (
 __all__ = [
     "main_menu_kb",
     "name_choice_kb",
-    "age_kb",
+    "gender_kb",
     "hero_kb",
     "theme_kb",
     "length_kb",

@@ -1,8 +1,13 @@
 """Подарок другу — пакет «персональная сказка под имя ребёнка близкого человека».
-Цена 199 ₽. FSM: имя получателя → возраст → герой → тема → личное послание → оплата.
+Цена 199 ₽. FSM: имя получателя → пол → личное послание → оплата.
+
+Gift-флоу упрощён в мае 2026: убраны шаги возраста, выбора героя и темы.
+Дарителю остаются только три самые личные вещи (имя ребёнка, пол, своё
+послание), всё остальное (герой, сюжет, мир) сказочник придумывает сам
+через pick_storyteller_variant — так же как в основной сказке.
 
 После оплаты бот:
-1. Генерирует сказку с использованием SYSTEM_GIFT_STORYTELLER
+1. Генерирует сказку с использованием pick_storyteller_variant + personal_note
 2. Рисует 3 иллюстрации через Recraft (как в основном флоу)
 3. Собирает PDF-книжку
 4. Шлёт всё ПОКУПАТЕЛЮ (а не получателю) — покупатель перешлёт другу сам через Telegram
@@ -25,8 +30,7 @@ from sqlalchemy import select
 
 from ..config import config
 from ..db import Session, Story, User
-from ..keyboards import age_kb, hero_kb, main_menu_kb, theme_kb
-from ..prompts import THEME_CHOICES
+from ..keyboards import gender_kb, main_menu_kb
 from ..services import (
     create_gift_invoice,
     generate_gift_story,
@@ -35,12 +39,7 @@ from ..services.image import generate_three_illustrations
 from ..services.pdf_book import build_story_pdf
 from ..states import GiftWizard
 from ..utils import (
-    accusative,
-    dative,
     genitive,
-    hero_accusative,
-    hero_instrumental,
-    instrumental,
     normalize_name,
 )
 
@@ -66,8 +65,8 @@ async def cb_gift_new(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(GiftWizard.waiting_recipient_name)
     await call.message.edit_text(
         "🎁 <b>Сказка в подарок</b>\n\n"
-        "Сложим персональную сказку — с именем ребёнка, его любимым "
-        "героем и Вашим тёплым посланием. Стоимость — <b>199 ₽</b>.\n\n"
+        "Сложим персональную сказку — с именем ребёнка, его полом и "
+        "Вашим тёплым посланием. Стоимость — <b>199 ₽</b>.\n\n"
         "Как зовут того, кому делаем подарок? Напишите имя."
     )
     await call.answer()
@@ -81,60 +80,20 @@ async def m_recipient_name(message: Message, state: FSMContext) -> None:
         return
     name = normalize_name(raw)
     await state.update_data(recipient_name=name)
-    await message.answer(f"🕯 Сколько лет {dative(name)}?", reply_markup=age_kb())
-    await state.set_state(GiftWizard.waiting_recipient_age)
-
-
-@router.callback_query(GiftWizard.waiting_recipient_age, F.data.startswith("age:"))
-async def cb_recipient_age(call: CallbackQuery, state: FSMContext) -> None:
-    age = int(call.data.split(":", 1)[1])
-    await state.update_data(recipient_age=age)
-    data = await state.get_data()
-    await call.message.edit_text(
-        f"🪶 Кто будет главным героем сказки рядом с {instrumental(data['recipient_name'])}?",
-        reply_markup=hero_kb(),
+    await message.answer(
+        f"🕯 <b>{name}</b> — мальчик или девочка?",
+        reply_markup=gender_kb(),
     )
-    await state.set_state(GiftWizard.waiting_hero)
-    await call.answer()
+    await state.set_state(GiftWizard.waiting_recipient_gender)
 
 
-@router.callback_query(GiftWizard.waiting_hero, F.data.startswith("hero:"))
-async def cb_gift_hero(call: CallbackQuery, state: FSMContext) -> None:
-    raw = call.data.split(":", 1)[1]
-    if raw == "custom":
-        await call.message.edit_text(
-            "🪶 Напишите героя — например: «дельфинёнок», «робот-садовник»."
-        )
-        await state.update_data(_await_custom_hero=True)
-        await call.answer()
+@router.callback_query(GiftWizard.waiting_recipient_gender, F.data.startswith("gender:"))
+async def cb_recipient_gender(call: CallbackQuery, state: FSMContext) -> None:
+    gender = call.data.split(":", 1)[1]
+    if gender not in ("male", "female"):
+        await call.answer("Выберите мальчик или девочка", show_alert=True)
         return
-    await state.update_data(hero=raw, _await_custom_hero=False)
-    await call.message.edit_text("🕯 Какая тема сказки?", reply_markup=theme_kb())
-    await state.set_state(GiftWizard.waiting_theme)
-    await call.answer()
-
-
-@router.message(GiftWizard.waiting_hero)
-async def m_gift_custom_hero(message: Message, state: FSMContext) -> None:
-    data = await state.get_data()
-    if not data.get("_await_custom_hero"):
-        return
-    hero = (message.text or "").strip()[:48]
-    if not hero:
-        await message.answer("🕯 Имя героя — до сорока восьми знаков. Попробуйте ещё раз.")
-        return
-    await state.update_data(hero=hero, _await_custom_hero=False)
-    await message.answer("🕯 Какая тема сказки?", reply_markup=theme_kb())
-    await state.set_state(GiftWizard.waiting_theme)
-
-
-@router.callback_query(GiftWizard.waiting_theme, F.data.startswith("theme:"))
-async def cb_gift_theme(call: CallbackQuery, state: FSMContext) -> None:
-    theme_key = call.data.split(":", 1)[1]
-    if theme_key not in THEME_CHOICES:
-        await call.answer("Тема недоступна")
-        return
-    await state.update_data(theme_key=theme_key)
+    await state.update_data(recipient_gender=gender)
     await call.message.edit_text(
         "🕯 Напишите личное послание от Вас — что-то тёплое или "
         "поздравление. Сказочник вплетёт его смысл в сказку, не "
@@ -155,12 +114,10 @@ async def m_personal_note(message: Message, state: FSMContext) -> None:
     await state.update_data(personal_note=note)
     data = await state.get_data()
 
-    theme_label = THEME_CHOICES[data["theme_key"]][0]
+    gender_label = "мальчик" if data.get("recipient_gender") == "male" else "девочка"
     summary = (
         "🎁 <b>Подарок готов к оплате</b>\n\n"
-        f"Для кого: <b>{data['recipient_name']}</b> ({data['recipient_age']} лет)\n"
-        f"Главный герой: <b>{data['hero']}</b>\n"
-        f"Тема: <b>{theme_label}</b>\n"
+        f"Для кого: <b>{data['recipient_name']}</b> ({gender_label})\n"
         f"Послание от Вас:\n<i>{note}</i>\n\n"
         "После оплаты сказочник сложит персональную PDF-книжечку с "
         "тремя иллюстрациями и пришлёт её сюда — Вы перешлёте близким.\n\n"
@@ -181,7 +138,7 @@ async def cb_gift_cancel(call: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "gift:pay")
 async def cb_gift_pay(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     data = await state.get_data()
-    required = {"recipient_name", "recipient_age", "hero", "theme_key", "personal_note"}
+    required = {"recipient_name", "recipient_gender", "personal_note"}
     if not required.issubset(data.keys()):
         await call.answer("Не хватает данных подарка — начните, пожалуйста, заново.", show_alert=True)
         return
@@ -189,9 +146,7 @@ async def cb_gift_pay(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     # Сохраняем параметры для использования после оплаты
     _pending_gifts[call.from_user.id] = {
         "recipient_name": data["recipient_name"],
-        "recipient_age": data["recipient_age"],
-        "hero": data["hero"],
-        "theme_key": data["theme_key"],
+        "recipient_gender": data["recipient_gender"],
         "personal_note": data["personal_note"],
     }
     await state.clear()
@@ -222,11 +177,9 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
     chat_id = telegram_user_id
     try:
         await bot.send_chat_action(chat_id, "typing")
-        text = await generate_gift_story(
+        text, story_title, scenes = await generate_gift_story(
             recipient_name=params["recipient_name"],
-            recipient_age=int(params["recipient_age"]),
-            hero=params["hero"],
-            theme_key=params["theme_key"],
+            recipient_gender=params["recipient_gender"],
             personal_note=params["personal_note"],
         )
     except Exception as e:
@@ -238,14 +191,14 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
         return
 
     # Параллельно с подготовкой шапки и текста — генерим 3 иллюстрации.
-    # gift-сказка идёт через SYSTEM_GIFT_STORYTELLER, который не выдаёт
-    # ---SCENES---блок (он только в основном сказочнике), поэтому
-    # передаём scenes=None — generate_three_illustrations отрендерит
-    # три картинки по stage-промптам без сюжетной привязки.
+    # Передаём scenes из самого сказочника (он их выдаёт в блоке ---SCENES---
+    # по нашей инструкции в _SCENE_BLOCK_INSTRUCTIONS). hero и theme_key
+    # пустые — generate_three_illustrations не использует их семантически,
+    # стиль определяется натренированным STYLE_ID.
     illustrations_task = asyncio.create_task(
         generate_three_illustrations(
-            params["hero"], params["theme_key"],
-            scenes=None,
+            "", "",
+            scenes=scenes,
             child_name=params["recipient_name"],
         )
     )
@@ -283,16 +236,16 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
     for part in _split_for_telegram(display_text):
         await bot.send_message(chat_id, part)
 
-    # 3) PDF-книжка
-    book_title = f"Сказка для {genitive(params['recipient_name'])}"
-    try:
-        theme_phrase = THEME_CHOICES[params["theme_key"]][2] if params.get("theme_key") else ""
-    except (KeyError, IndexError):
-        theme_phrase = ""
+    # 3) PDF-книжка. Используем название из самой сказки если есть,
+    # иначе fallback на «Сказка для X».
+    if story_title:
+        book_title = story_title
+    else:
+        book_title = f"Сказка для {genitive(params['recipient_name'])}"
     try:
         pdf_path = build_story_pdf(
             title=book_title,
-            subtitle=theme_phrase,
+            subtitle="",  # подзаголовок раньше брался из THEME_CHOICES, темы больше нет
             text=display_text,
             cover_image=cover_path,
             climax_image=illustrations.get("climax"),
@@ -307,16 +260,18 @@ async def complete_gift_after_payment(bot: Bot, telegram_user_id: int) -> None:
     except Exception as e:
         logger.exception("Подарочный PDF не собрался: %s", e)
 
-    # Сохраняем в архив покупателя как gift
+    # Сохраняем в архив покупателя как gift. Колонки hero/theme в Story
+    # nullable — оставляем None для новых подарков (старые записи NULL не
+    # тревожим). child_age оставляем 6 как дефолт — колонка NOT NULL.
     async with Session() as s:
         buyer = (await s.execute(select(User).where(User.telegram_id == telegram_user_id))).scalar_one_or_none()
         if buyer:
             s.add(Story(
                 user_id=buyer.id,
                 child_name=params["recipient_name"],
-                child_age=int(params["recipient_age"]),
-                hero=params["hero"],
-                theme=params["theme_key"],
+                child_age=6,
+                hero="",
+                theme="",
                 length="medium",
                 # В БД сохраняем уже без маркеров (для /library)
                 text=display_text,

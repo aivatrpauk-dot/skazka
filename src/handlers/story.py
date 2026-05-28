@@ -17,6 +17,7 @@ from ..db import Session, Story, SubscriptionStatus, User
 from ..keyboards import (
     after_story_kb,
     daily_limit_kb,
+    gender_kb,
     hero_kb,
     main_menu_kb,
     paywall_kb,
@@ -326,13 +327,8 @@ async def cb_story_new(call: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.callback_query(F.data.startswith("name:pick:"))
-async def cb_name_pick(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
-    """Юзер выбрал ИМЯ из списка прежних → сразу запускаем генерацию.
-
-    Шаг выбора возраста («3-4» / «5-6 лет») убран в мае 2026 вместе с
-    возрастным сплитом storyteller-промпта — теперь все 6 анкеров пишут
-    для целевой аудитории 5-7 лет одинаково.
-    """
+async def cb_name_pick(call: CallbackQuery, state: FSMContext) -> None:
+    """Юзер выбрал ИМЯ из списка прежних → спрашиваем пол."""
     name = call.data.split(":", 2)[2]
     if not name:
         await call.answer("Пустое имя", show_alert=True)
@@ -341,7 +337,12 @@ async def cb_name_pick(call: CallbackQuery, state: FSMContext, bot: Bot) -> None
     # код умеет это обрабатывать (PDF-заголовок «Сказка для X», after_story_kb
     # без «продолжить про X»).
     await state.update_data(child_name=name, child_age=6, hero="", theme_key="")
-    await _run_generation(call, state, bot)
+    await call.message.edit_text(
+        f"🕯 <b>{name}</b> — мальчик или девочка?",
+        reply_markup=gender_kb(),
+    )
+    await state.set_state(StoryWizard.waiting_child_gender)
+    await call.answer()
 
 
 @router.callback_query(F.data == "name:new")
@@ -362,13 +363,8 @@ async def cb_name_new(call: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.message(StoryWizard.waiting_child_name)
-async def m_child_name(message: Message, state: FSMContext, bot: Bot) -> None:
-    """Юзер ввёл имя ребёнка → сразу запускаем генерацию.
-
-    Шаг выбора возраста («3-4» / «5-6 лет») убран в мае 2026 вместе с
-    возрастным сплитом storyteller-промпта — теперь все 6 анкеров пишут
-    для целевой аудитории 5-7 лет одинаково.
-    """
+async def m_child_name(message: Message, state: FSMContext) -> None:
+    """Юзер ввёл имя ребёнка → спрашиваем пол."""
     raw = (message.text or "").strip()[:32]
     if not raw or not raw.replace("-", "").replace(" ", "").isalpha():
         await message.answer(
@@ -380,7 +376,28 @@ async def m_child_name(message: Message, state: FSMContext, bot: Bot) -> None:
     # код умеет это обрабатывать (PDF-заголовок «Сказка для X», after_story_kb
     # без «продолжить про X»).
     await state.update_data(child_name=name, child_age=6, hero="", theme_key="")
-    await _run_generation(message, state, bot)
+    await message.answer(
+        f"🕯 <b>{name}</b> — мальчик или девочка?",
+        reply_markup=gender_kb(),
+    )
+    await state.set_state(StoryWizard.waiting_child_gender)
+
+
+@router.callback_query(StoryWizard.waiting_child_gender, F.data.startswith("gender:"))
+async def cb_child_gender(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    """Юзер выбрал пол → запускаем генерацию.
+
+    Значения callback_data: «gender:male» / «gender:female». Это явный
+    источник правды для склонения имени, обращений к герою и пола
+    нарисованного ребёнка в иллюстрациях. Заменяет автоопределение по
+    словарю CIS-имён (которое промахивается на Тасях, Хрюшах, Кузях).
+    """
+    gender = call.data.split(":", 1)[1]
+    if gender not in ("male", "female"):
+        await call.answer("Выберите мальчик или девочка", show_alert=True)
+        return
+    await state.update_data(child_gender=gender)
+    await _run_generation(call, state, bot)
 
 
 # cb_change_name и cb_child_age удалены в мае 2026 — шаг выбора возраста
@@ -547,6 +564,7 @@ async def _run_generation(
         text, story_title, scenes = await generate_story(
             child_name=data["child_name"],
             child_age=child_age_int,
+            child_gender=data.get("child_gender"),
             form=params.form,
             opening=params.opening,
             paid_quality=full_quality,
