@@ -431,14 +431,18 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # — Без конкретных what-to-draw мотивов — иначе Recraft буквально
 #   натычет «fireflies, moons, lanterns» в каждую картинку.
 _COMMON_DNA = (
-    "Studio Ghibli style illustration, Hayao Miyazaki inspired. "
-    "Soft watercolor with cel-shading, painterly anime look, "
-    "cinematic warm lighting. Lush greenery, summer skies, golden sun "
-    "or magical twilight. Spirit of Totoro / Kiki / Spirited Away — "
-    "wonder, warmth, gentle magic. Kind round-faced children, no Disney "
-    "stylization. NO mice or rabbits in clothing as main character. "
+    "Painterly anime-watercolor illustration in the visual aesthetic "
+    "of classic Japanese animation studios. Soft watercolor backgrounds "
+    "with delicate cel-shading, gentle painterly textures, cinematic "
+    "warm lighting. Lush greenery, summer skies with soft painted clouds, "
+    "golden sunlight or magical twilight. Hand-drawn anime look, kind "
+    "round-faced children with large expressive eyes. NO Disney "
+    "stylization, NO Western cartoon look, NO 3D render. "
+    "ORIGINAL characters only — do NOT depict named characters or "
+    "creatures from any specific film. No copyrighted mascots. "
+    "NO mice or rabbits in clothing as main character. "
     "NO TEXT, no letters, no captions in frame. "
-    # Safety-блок — это детские сказки. Не допускаем ничего что не "
+    # Safety-блок — это детские сказки. Не допускаем ничего что не
     # пройдёт глазами родителя.
     "STRICTLY for children's bedtime book, fully family-safe and "
     "age-appropriate. NO sexualization of any kind, NO suggestive poses, "
@@ -454,36 +458,36 @@ _COMMON_DNA = (
 # Все варианты прописаны в Ghibli/anime-эстетике, не в реалистичной.
 _HERO_VISUAL_VARIANTS = {
     "boy": (
-        "Hero: a young Ghibli-style boy around age 6, kind round face, "
-        "large expressive eyes, soft hair, simple comfortable clothes — "
-        "looks like a child from a Studio Ghibli film. Real human child, "
-        "not an animal, no animal ears, no tail."
-    ),
-    "girl": (
-        "Hero: a young Ghibli-style girl around age 6, kind round face, "
-        "large expressive eyes, soft hair (perhaps a ribbon or pigtails), "
-        "simple summer dress or comfy outfit — like a child from a "
-        "Studio Ghibli film. Real human child, not an animal, no animal "
+        "Hero: a young painterly-anime boy around age 6, kind round face, "
+        "large expressive eyes, soft hair, simple comfortable clothes. "
+        "Original character. Real human child, not an animal, no animal "
         "ears, no tail."
     ),
+    "girl": (
+        "Hero: a young painterly-anime girl around age 6, kind round face, "
+        "large expressive eyes, soft hair (perhaps a ribbon or pigtails), "
+        "simple summer dress or comfy outfit. Original character. Real "
+        "human child, not an animal, no animal ears, no tail."
+    ),
     "fairy": (
-        "Hero: a tiny Ghibli-style forest fairy with delicate translucent "
-        "wings, kind young face, soft glow. Human-shaped, not an animal."
+        "Hero: a tiny painterly-anime forest fairy with delicate "
+        "translucent wings, kind young face, soft glow. Original "
+        "character. Human-shaped, not an animal."
     ),
     "spirit": (
-        "Hero: a small Ghibli-style woodland spirit child with leaves "
-        "or flower petals in hair, gentle eyes, soft luminescence — "
-        "like a kodama-cousin or forest sprite. Human-shaped, not an animal."
+        "Hero: a small painterly-anime woodland spirit child with leaves "
+        "or flower petals in hair, gentle eyes, soft luminescence. "
+        "Original character. Human-shaped, not an animal."
     ),
     "dragon_cub": (
-        "Hero: a small friendly Ghibli-style dragon cub with soft scales, "
-        "huge expressive child-like eyes, gentle demeanor — not a fierce "
-        "Western dragon, more like Haku in young form."
+        "Hero: a small friendly painterly-anime dragon cub with soft "
+        "scales, huge expressive child-like eyes, gentle demeanor. "
+        "Original character. Not a fierce Western dragon."
     ),
     "elf": (
-        "Hero: a tiny Ghibli-style elf child with slightly pointed ears, "
-        "mischievous kind eyes, small wreath of leaves or flowers in hair. "
-        "Human-shaped, not an animal."
+        "Hero: a tiny painterly-anime elf child with slightly pointed "
+        "ears, mischievous kind eyes, small wreath of leaves or flowers "
+        "in hair. Original character. Human-shaped, not an animal."
     ),
 }
 
@@ -520,60 +524,54 @@ def pick_hero_visual(child_gender: str | None) -> str:
 # Все варианты держат общую ДНК (см. _COMMON_DNA): техника, палитра,
 # мультяшность, лето. Но каждый ПУШИТ в свой регистр композиции/плотности.
 IMAGE_STYLE_VARIANTS: dict[str, str] = {
-    # Огромный мир куда хочется нырять. В Ghibli-стилистике это
-    # широкие пейзажи с маленькой фигурой героя (как открывающие
-    # кадры «Тоторо», «Кики», «Принцессы Мононоке»).
+    # Огромный мир куда хочется нырять — широкий пейзаж с маленькой
+    # фигурой героя где-то в кадре. Имена конкретных фильмов убраны
+    # (май 2026): FLUX буквально подставлял героев из них.
     "vast_world": (
-        "Sweeping Ghibli-style landscape, wide cinematic shot. "
-        "Rolling green hills, distant village rooftops, painterly clouds, "
-        "tiny figure of the hero somewhere in the frame — not the center. "
-        "The world is the star. Painted in the spirit of Totoro opening "
-        "shots and Howl's Moving Castle countryside. " + _COMMON_DNA
+        "Sweeping painterly anime landscape, wide cinematic shot. "
+        "Rolling green hills, distant village rooftops, soft painted "
+        "clouds, a tiny figure of the hero somewhere in the frame — "
+        "not the center. The world is the star. " + _COMMON_DNA
     ),
 
-    # Сцена-обзор где живёт целое сообщество — дети 5-7 любят
-    # рассматривать. Аналог Spirited Away bathhouse crowd scenes.
+    # Сцена-обзор где живёт целое сообщество.
     "busy_scene": (
-        "Lively Ghibli-style scene with many little things happening. "
-        "Townspeople or magical creatures going about their day: a baker "
-        "carrying bread, a child chasing a moth, an old man feeding birds, "
-        "a cat napping on a wall. Composed like Kiki's Delivery Service "
-        "city streets. " + _COMMON_DNA
+        "Lively painterly anime scene with many small things happening. "
+        "Townspeople going about their day: a baker carrying bread, "
+        "a child chasing a moth, an old man feeding birds, a cat napping "
+        "on a wall. Original characters only. " + _COMMON_DNA
     ),
 
-    # Магический момент — лёгкий сюр в духе Тоторо «летит с зонтом».
+    # Магический момент — лёгкий сюр.
     "magic_moment": (
-        "Magical moment, Ghibli style. The hero in an unusual surreal "
-        "scene — flying, floating, standing on something impossible, "
-        "meeting a strange gentle creature. Soft wonder, not threat. "
-        "Like Totoro on the tree branch with kids, or Haku flying with "
-        "Chihiro. " + _COMMON_DNA
+        "Magical surreal moment in painterly anime style. The hero "
+        "doing something impossible — flying, floating, standing on "
+        "something tiny, meeting a gentle original magical creature. "
+        "Soft wonder, not threat. " + _COMMON_DNA
     ),
 
-    # Уютный интерьер — Ghibli interiors (Howl's kitchen, Kiki's bakery).
+    # Уютный интерьер.
     "cozy_interior": (
-        "Cozy Ghibli-style interior. Wooden beams, soft natural light "
-        "through a window, kettle on a stove, herbs hanging from rafters, "
-        "books and curiosities on shelves. Painterly textures, warm. "
-        "Like Howl's kitchen or Kiki's bakery room. " + _COMMON_DNA
-    ),
-
-    # Герой в дороге — Mononoke forest walk, Kiki flying, Chihiro train.
-    "journey": (
-        "The hero traveling through a magical world, Ghibli style. "
-        "A winding path, distant mountains, a small vehicle or animal "
-        "companion, lanterns swaying. The journey feels gentle, full of "
-        "discovery. Like Kiki on her broom or Chihiro on the spirit train. "
+        "Cozy painterly anime interior. Wooden beams, soft natural "
+        "light through a window, kettle on a stove, herbs hanging from "
+        "rafters, books and curiosities on shelves. Warm and lived-in. "
         + _COMMON_DNA
     ),
 
-    # Крупный читаемый герой — Ghibli portrait moments (Ponyo's face,
-    # Totoro's grin). Лицо крупно, выразительная эмоция.
+    # Герой в дороге.
+    "journey": (
+        "The hero traveling through a magical world, painterly anime "
+        "style. A winding path, distant mountains, a small vehicle or "
+        "gentle animal companion, lanterns swaying. The journey feels "
+        "calm and full of discovery. " + _COMMON_DNA
+    ),
+
+    # Крупный читаемый герой.
     "character_focus": (
-        "Ghibli-style character moment — the hero close to camera. "
+        "Painterly anime character moment — the hero close to camera. "
         "Kind round face, large expressive eyes, clear gentle emotion. "
-        "Soft painterly background with magical detail. Like Ponyo's "
-        "wonder-face or Mei meeting Totoro. " + _COMMON_DNA
+        "Soft painterly background with light magical detail. "
+        + _COMMON_DNA
     ),
 }
 
