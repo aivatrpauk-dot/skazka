@@ -1162,3 +1162,53 @@ async def cmd_seed_channel(message: Message, command: CommandObject) -> None:
         f"С ошибками: <b>{failed}</b>\n\n"
         f"Загляните в {config.channel_id} — должно быть {succeeded} новых постов."
     )
+
+
+# ============================================================================
+# /save_as_demo <story_id> — зафиксировать сказку как витринный образец
+# ============================================================================
+
+@router.message(Command("save_as_demo"))
+async def cmd_save_as_demo(message: Message, command: CommandObject) -> None:
+    """Берёт сказку по ID из БД и копирует её файлы в cache/demo/ —
+    она становится новым витринным образцом, который видят все юзеры
+    под кнопкой «🌟 Посмотреть образец сказки».
+
+    Использование:
+      /save_as_demo 42
+
+    Алгоритм работы:
+    1. Сгенерируй несколько сказок через обычный флоу бота (имя →
+       пол → ждёшь PDF).
+    2. Найди ID понравившейся через /user_info или прямо в БД.
+    3. /save_as_demo <id> — файлы скопируются из cache/images/ и
+       cache/pdfs/ в cache/demo/.
+
+    Что копируется:
+      • Текст сказки → cache/demo/story.txt
+      • Обложка (image_path) → cache/demo/cover.jpg
+      • PDF (pdf_path) → cache/demo/book.pdf
+
+    climax.jpg и ending.jpg в БД не хранятся отдельно (Story.image_path
+    указывает только на обложку). Если нужны три иллюстрации в витрине
+    — положи climax.jpg и ending.jpg в cache/demo/ вручную через
+    docker cp или scp.
+    """
+    if not _is_admin(message.from_user.id):
+        return
+
+    raw = (command.args or "").strip()
+    if not raw or not raw.isdigit():
+        await message.answer(
+            "Использование: <code>/save_as_demo &lt;story_id&gt;</code>\n\n"
+            "Например: <code>/save_as_demo 42</code> — возьмёт сказку #42 "
+            "из БД и зафиксирует её как витринный образец.\n\n"
+            "Чтобы узнать ID последней сказки юзера — "
+            "<code>/user_info &lt;telegram_id&gt;</code>."
+        )
+        return
+
+    story_id = int(raw)
+    from ..services import save_story_as_demo
+    ok, msg = await save_story_as_demo(story_id)
+    await message.answer(msg)

@@ -33,6 +33,7 @@ from .partners import (
     mark_commissions_paid,
 )
 from .rate_limit import check_story_limit, reset_user_limits
+from .demo import load_demo_story, is_demo_available, save_story_as_demo
 
 __all__ = [
     "generate_story",
@@ -58,4 +59,7 @@ __all__ = [
     "mark_commissions_paid",
     "check_story_limit",
     "reset_user_limits",
+    "load_demo_story",
+    "is_demo_available",
+    "save_story_as_demo",
 ]

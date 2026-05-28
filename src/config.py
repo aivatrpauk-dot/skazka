@@ -135,8 +135,11 @@ class Config:
     db_url: str = field(default_factory=lambda: _env("DB_URL", "postgresql+asyncpg://skazka:skazka@db:5432/skazka"))
 
     # ─────────────── Лимиты и тарифы ───────────────
-    # Новая бесплатная норма: ОДНА сказка триал. Дальше paywall.
-    free_story_limit: int = field(default_factory=lambda: _int("FREE_STORY_LIMIT", 1))
+    # Бесплатных сказок нет — с мая 2026 юзер до покупки видит витринный
+    # образец (готовая статическая сказка под кнопкой «🌟 Образец») и
+    # сразу платит за персональную. Если поставить 1+ — вернётся старая
+    # модель «первая бесплатно» (тратит ~3₽ нашего на каждого тестера).
+    free_story_limit: int = field(default_factory=lambda: _int("FREE_STORY_LIMIT", 0))
     # Реферальный бонус: даётся приглашающему ТОЛЬКО когда приглашённый юзер
     # сделает первую успешную оплату (любого тарифа: single/pack/monthly).
     # Просто переход по ?start=ref_XXX бонуса больше не даёт.

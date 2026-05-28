@@ -21,8 +21,11 @@ from sqlalchemy import desc, select
 
 from ..config import config
 from ..db import Referral, Session, Story, User
+from aiogram.types import FSInputFile
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from ..keyboards import main_menu_kb
-from ..services import find_partner_by_code
+from ..services import find_partner_by_code, load_demo_story
 
 logger = logging.getLogger(__name__)
 router = Router(name="start")
@@ -158,3 +161,81 @@ async def cb_main_menu(call: CallbackQuery) -> None:
         reply_markup=main_menu_kb(continuation_hero=hero, continuation_child=child),
     )
     await call.answer()
+
+
+# ─────────────────── Витринный образец сказки ───────────────────
+# Кнопка «🌟 Посмотреть образец сказки» в главном меню. Юзер до покупки
+# видит конкретный пример продукта — снимаем тревогу «а вдруг плохо».
+# Файлы лежат в cache/demo/ (override админом через /save_as_demo) или
+# resources/demo/ (default из репо). См. services/demo.py.
+
+
+def _demo_back_kb() -> "InlineKeyboardBuilder":
+    """Под витриной — кнопка «Сложить свою» (главная CTA) + назад."""
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🪶 Сложить такую же — с именем ребёнка", callback_data="story:new")
+    kb.button(text="◀ В меню", callback_data="menu:main")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+@router.callback_query(F.data == "demo:show")
+async def cb_demo_show(call: CallbackQuery) -> None:
+    """Показывает витринный образец: обложку + текст + PDF + CTA."""
+    demo = load_demo_story()
+    chat_id = call.message.chat.id
+
+    if not demo.text or not demo.pdf_path:
+        # Витрина ещё не настроена — показываем мягкую заглушку.
+        await call.message.answer(
+            "🌟 <b>Образец готовим</b>\n\n"
+            "Пока образец на доработке. Попробуйте сложить свою — "
+            "увидите вживую, как звучит наша сказка.",
+            reply_markup=_demo_back_kb(),
+        )
+        await call.answer()
+        return
+
+    await call.answer()
+
+    # 1. Шапка-вступление — задаём контекст «это пример»
+    intro = (
+        "🌟 <b>Образец нашей сказки</b>\n\n"
+        "Вот как выглядит сегодняшняя сказка от «Сказки» — "
+        "одна полноценная книжечка перед сном с тремя иллюстрациями.\n\n"
+        "В Вашей — будет имя Вашего ребёнка и свой сюжет."
+    )
+    await call.message.answer(intro)
+
+    # 2. Обложка
+    if demo.cover_path and demo.cover_path.exists():
+        try:
+            await call.message.answer_photo(FSInputFile(str(demo.cover_path)))
+        except Exception as e:
+            logger.warning("Не смог отправить обложку демо: %s", e)
+
+    # 3. Текст частями (Telegram-лимит 4096)
+    title = demo.title or "Сказка-образец"
+    body = (demo.text or "").strip()
+    full_text = f"<b>{title}</b>\n\n{body}"
+    # Импортируем сплиттер из story.py чтобы не дублировать логику
+    from .story import _split_for_telegram
+    for part in _split_for_telegram(full_text):
+        await call.message.answer(part)
+
+    # 4. PDF-книжка
+    if demo.pdf_path and demo.pdf_path.exists():
+        try:
+            await call.message.answer_document(
+                FSInputFile(str(demo.pdf_path), filename="Образец сказки.pdf"),
+                caption="📖 PDF-версия для печати",
+            )
+        except Exception as e:
+            logger.warning("Не смог отправить PDF демо: %s", e)
+
+    # 5. CTA + возврат
+    await call.message.answer(
+        "🪶 Понравилось? Сложим такую же — с именем Вашего ребёнка. "
+        "Одна сказка — 149 ₽.",
+        reply_markup=_demo_back_kb(),
+    )

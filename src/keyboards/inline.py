@@ -18,6 +18,9 @@ def main_menu_kb(
     """
     _ = continuation_hero, continuation_child
     kb = InlineKeyboardBuilder()
+    # Витринный образец — первым пунктом. Юзер до покупки видит конкретный
+    # пример продукта (PDF + обложка + текст), потом принимает решение.
+    kb.button(text="🌟 Посмотреть образец сказки", callback_data="demo:show")
     kb.button(text="🪶 Сложить сегодняшнюю сказку", callback_data="story:new")
     kb.button(text="📚 Наша книжная полка", callback_data="lib:open")
     kb.button(text="💌 Пригласить близких — сказка в подарок", callback_data="ref:share")

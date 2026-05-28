@@ -43,8 +43,9 @@ router = Router(name="billing")
 
 PLANS_TEXT = (
     "<b>🌟 Тарифы</b>\n\n"
-    "🕯 <b>Знакомство — бесплатно</b>\n"
-    "{free} сказка-демо в подарок при первом запуске.\n\n"
+    "🌟 <b>Образец сказки — бесплатно</b>\n"
+    "Посмотрите в главном меню, как звучит наша сказка, прежде чем "
+    "заказывать персональную.\n\n"
     "🕯 <b>Одна сказка на вечер — 149 ₽</b>\n"
     "Разовая покупка. Без обязательств и подписок — просто одна тёплая "
     "персональная история перед сном.\n\n"
@@ -79,7 +80,7 @@ async def cb_plans(call: CallbackQuery) -> None:
             f"вместо обычных {config.price_monthly_kopecks/100:.0f} ₽.\n\n"
         )
     await call.message.edit_text(
-        banner + PLANS_TEXT.format(free=config.free_story_limit),
+        banner + PLANS_TEXT,
         reply_markup=paywall_kb(),
     )
     await call.answer()

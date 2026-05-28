@@ -15,8 +15,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+COPY resources/ ./resources/
 COPY .env* ./
 
-RUN mkdir -p ./cache/audio ./cache/images ./cache/pdf ./cache/ambient_stitched
+RUN mkdir -p ./cache/audio ./cache/images ./cache/pdf ./cache/ambient_stitched ./cache/demo
 
 CMD ["python", "-m", "src.main"]
