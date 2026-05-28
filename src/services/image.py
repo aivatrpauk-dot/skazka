@@ -111,15 +111,18 @@ async def generate_cover(
     # Сцена-описание идёт как «Сцена: <текст>» после стиля. Это контекст
     # происходящего, не команда «нарисуй именно это» — финальную композицию
     # художник выбирает сам.
-    # Склейка: style + hero + scene. Hero идёт ПОСЛЕ style — так у Recraft
-    # он перебивает дефолтный «зверь в одежде» из натренированного style_id.
+    # Склейка: style + hero + scene. Hero идёт ПОСЛЕ style — он
+    # перебивает дефолтные тяги модели в Brambly-Hedge мышей.
     # Scene — последней, она про конкретный момент мира.
     scene_hint = (scene_description or "").strip()
-    # Бюджет: 975 (под Recraft Direct 980 с запасом 5) − style − hero
-    # − wrap-блоки − \n\n разделители.
+    # Бюджет model-aware: Recraft Direct ограничивает prompt ~980 char,
+    # FLUX-pro/dev и Gemini Imagen — гораздо мягче (5000+). Под Recraft
+    # держим жёсткий лимит, иначе scene дропается и три картинки сольются.
     hero_block = (hero_visual or "").strip()
+    image_model = (config.image_model or "").strip().lower()
+    total_budget = 975 if image_model == "recraft-v3" else 2400
     fixed_overhead = len(style_prompt) + len(hero_block) + len("Scene: ") + 4
-    budget_for_scene = 975 - fixed_overhead
+    budget_for_scene = total_budget - fixed_overhead
 
     parts = [style_prompt]
     if hero_block:
