@@ -431,13 +431,15 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # — Без конкретных what-to-draw мотивов — иначе Recraft буквально
 #   натычет «fireflies, moons, lanterns» в каждую картинку.
 _COMMON_DNA = (
-    "Painterly anime-watercolor illustration in the visual aesthetic "
-    "of classic Japanese animation studios. Soft watercolor backgrounds "
-    "with delicate cel-shading, gentle painterly textures, cinematic "
-    "warm lighting. Lush greenery, summer skies with soft painted clouds, "
-    "golden sunlight or magical twilight. Hand-drawn anime look, kind "
-    "round-faced children with large expressive eyes. NO Disney "
-    "stylization, NO Western cartoon look, NO 3D render. "
+    "Hand-painted traditional 2D animation illustration, watercolor "
+    "and ink, soft cel-shading. Background-art quality of classic "
+    "Japanese animated films — painterly skies, lush hand-painted "
+    "foliage, cinematic warm lighting, gentle atmospheric depth. "
+    "Children rendered with natural human proportions and natural-"
+    "sized eyes, NOT chibi, NOT kawaii, NOT moe, NOT big-eyed anime "
+    "doll style. Faces have subtle expression, soft realism. "
+    "NO Disney stylization, NO Western cartoon look, NO 3D render, "
+    "NO modern manga big-eye style, NO digital airbrush, NO HDR. "
     "ORIGINAL characters only — do NOT depict named characters or "
     "creatures from any specific film. No copyrighted mascots. "
     "NO mice or rabbits in clothing as main character. "
@@ -446,10 +448,10 @@ _COMMON_DNA = (
     # пройдёт глазами родителя.
     "STRICTLY for children's bedtime book, fully family-safe and "
     "age-appropriate. NO sexualization of any kind, NO suggestive poses, "
-    "NO manga fanservice, NO bare skin beyond hands and face, NO "
-    "tight or revealing clothing. Children fully dressed in modest "
-    "simple clothes. NO violence, NO weapons, NO scary monsters, NO "
-    "dark themes. Innocent and warm, like a picture book for a 6-year-old."
+    "NO bare skin beyond hands and face, NO tight or revealing clothing. "
+    "Children fully dressed in modest simple clothes. NO violence, "
+    "NO weapons, NO scary monsters, NO dark themes. Innocent and warm, "
+    "like a picture book for a 6-year-old."
 )
 
 
@@ -458,36 +460,37 @@ _COMMON_DNA = (
 # Все варианты прописаны в Ghibli/anime-эстетике, не в реалистичной.
 _HERO_VISUAL_VARIANTS = {
     "boy": (
-        "Hero: a young painterly-anime boy around age 6, kind round face, "
-        "large expressive eyes, soft hair, simple comfortable clothes. "
-        "Original character. Real human child, not an animal, no animal "
-        "ears, no tail."
+        "Hero: a young boy around age 6, natural child proportions, "
+        "soft hair, kind face with natural-sized eyes (NOT big anime "
+        "or chibi eyes), simple comfortable clothes. Original character. "
+        "Real human child, not an animal, no animal ears, no tail."
     ),
     "girl": (
-        "Hero: a young painterly-anime girl around age 6, kind round face, "
-        "large expressive eyes, soft hair (perhaps a ribbon or pigtails), "
-        "simple summer dress or comfy outfit. Original character. Real "
-        "human child, not an animal, no animal ears, no tail."
+        "Hero: a young girl around age 6, natural child proportions, "
+        "soft hair (perhaps a ribbon or pigtails), kind face with "
+        "natural-sized eyes (NOT big anime or chibi eyes), simple "
+        "summer dress or comfy outfit. Original character. Real human "
+        "child, not an animal, no animal ears, no tail."
     ),
     "fairy": (
-        "Hero: a tiny painterly-anime forest fairy with delicate "
-        "translucent wings, kind young face, soft glow. Original "
+        "Hero: a tiny forest fairy with delicate translucent wings, "
+        "kind young face with natural-sized eyes, soft glow. Original "
         "character. Human-shaped, not an animal."
     ),
     "spirit": (
-        "Hero: a small painterly-anime woodland spirit child with leaves "
-        "or flower petals in hair, gentle eyes, soft luminescence. "
-        "Original character. Human-shaped, not an animal."
+        "Hero: a small woodland spirit child with leaves or flower "
+        "petals in hair, gentle eyes, soft luminescence. Original "
+        "character. Human-shaped, not an animal, natural face proportions."
     ),
     "dragon_cub": (
-        "Hero: a small friendly painterly-anime dragon cub with soft "
-        "scales, huge expressive child-like eyes, gentle demeanor. "
-        "Original character. Not a fierce Western dragon."
+        "Hero: a small friendly dragon cub with soft scales, gentle "
+        "demeanor, natural-sized eyes (not anime-style big). Original "
+        "character. Not a fierce Western dragon."
     ),
     "elf": (
-        "Hero: a tiny painterly-anime elf child with slightly pointed "
-        "ears, mischievous kind eyes, small wreath of leaves or flowers "
-        "in hair. Original character. Human-shaped, not an animal."
+        "Hero: a tiny elf child with slightly pointed ears, mischievous "
+        "kind face with natural-sized eyes, small wreath of leaves or "
+        "flowers in hair. Original character. Human-shaped, not an animal."
     ),
 }
 
@@ -528,7 +531,7 @@ IMAGE_STYLE_VARIANTS: dict[str, str] = {
     # фигурой героя где-то в кадре. Имена конкретных фильмов убраны
     # (май 2026): FLUX буквально подставлял героев из них.
     "vast_world": (
-        "Sweeping painterly anime landscape, wide cinematic shot. "
+        "Sweeping painterly watercolor landscape, wide cinematic shot. "
         "Rolling green hills, distant village rooftops, soft painted "
         "clouds, a tiny figure of the hero somewhere in the frame — "
         "not the center. The world is the star. " + _COMMON_DNA
@@ -536,7 +539,7 @@ IMAGE_STYLE_VARIANTS: dict[str, str] = {
 
     # Сцена-обзор где живёт целое сообщество.
     "busy_scene": (
-        "Lively painterly anime scene with many small things happening. "
+        "Lively painterly watercolor scene with many small things happening. "
         "Townspeople going about their day: a baker carrying bread, "
         "a child chasing a moth, an old man feeding birds, a cat napping "
         "on a wall. Original characters only. " + _COMMON_DNA
@@ -544,7 +547,7 @@ IMAGE_STYLE_VARIANTS: dict[str, str] = {
 
     # Магический момент — лёгкий сюр.
     "magic_moment": (
-        "Magical surreal moment in painterly anime style. The hero "
+        "Magical surreal moment in painterly watercolor style. The hero "
         "doing something impossible — flying, floating, standing on "
         "something tiny, meeting a gentle original magical creature. "
         "Soft wonder, not threat. " + _COMMON_DNA
@@ -552,7 +555,7 @@ IMAGE_STYLE_VARIANTS: dict[str, str] = {
 
     # Уютный интерьер.
     "cozy_interior": (
-        "Cozy painterly anime interior. Wooden beams, soft natural "
+        "Cozy painterly watercolor interior. Wooden beams, soft natural "
         "light through a window, kettle on a stove, herbs hanging from "
         "rafters, books and curiosities on shelves. Warm and lived-in. "
         + _COMMON_DNA
@@ -560,18 +563,20 @@ IMAGE_STYLE_VARIANTS: dict[str, str] = {
 
     # Герой в дороге.
     "journey": (
-        "The hero traveling through a magical world, painterly anime "
+        "The hero traveling through a magical world, painterly watercolor "
         "style. A winding path, distant mountains, a small vehicle or "
         "gentle animal companion, lanterns swaying. The journey feels "
         "calm and full of discovery. " + _COMMON_DNA
     ),
 
-    # Крупный читаемый герой.
+    # Сцена с героем как медиум-план — герой в действии в обжитом
+    # пространстве, лицо читается, но не портретный крупняк.
     "character_focus": (
-        "Painterly anime character moment — the hero close to camera. "
-        "Kind round face, large expressive eyes, clear gentle emotion. "
-        "Soft painterly background with light magical detail. "
-        + _COMMON_DNA
+        "Hand-painted watercolor scene with the hero in clear focus, "
+        "medium shot, not portrait close-up. The hero doing something "
+        "natural — looking at something curious, reaching out, walking. "
+        "Soft watercolor background full of magical living detail "
+        "around them. " + _COMMON_DNA
     ),
 }
 
