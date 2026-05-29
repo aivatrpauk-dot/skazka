@@ -647,7 +647,9 @@ IMAGE_STYLE_VARIANTS: dict[str, str] = {
 # Для обратной совместимости — алиас на один из вариантов. Реально
 # вызывающие должны выбирать вариант явно (см. generate_three_illustrations
 # с ротацией) или брать random.choice(list(IMAGE_STYLE_VARIANTS.values())).
-IMAGE_STYLE_BASE = IMAGE_STYLE_VARIANTS["cozy_interior"]
+# Май 2026: cozy_interior удалён в общем переименовании — используем
+# watercolor_ink как дефолт-fallback.
+IMAGE_STYLE_BASE = IMAGE_STYLE_VARIANTS["watercolor_ink"]
 
 # Раньше тут был «A child playing with their friend {hero} ...» — это
 # жёстко диктовало модели сцену и шло вразрез с «Compose the scene
