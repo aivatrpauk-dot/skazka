@@ -431,26 +431,30 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # — Без конкретных what-to-draw мотивов — иначе Recraft буквально
 #   натычет «fireflies, moons, lanterns» в каждую картинку.
 _COMMON_DNA = (
-    "Hand-painted traditional 2D animation illustration, watercolor "
-    "and ink, soft cel-shading. Background-art quality of classic "
-    "Japanese animated films — painterly skies, lush hand-painted "
-    "foliage, cinematic warm lighting, gentle atmospheric depth. "
-    "Children rendered with natural human proportions and natural-"
-    "sized eyes, NOT chibi, NOT kawaii, NOT moe, NOT big-eyed anime "
-    "doll style. Faces have subtle expression, soft realism. "
-    "NO Disney stylization, NO Western cartoon look, NO 3D render, "
-    "NO modern manga big-eye style, NO digital airbrush, NO HDR. "
+    # Главное — сюрреалистичный богатый внутренний мир, не «милый портрет».
+    "Surreal storybook scene with a rich inner world — something "
+    "impossible living an ordinary life. Wide cinematic composition, "
+    "the hero is part of the world, NOT a portrait close-up. Lots of "
+    "small living details to discover: lanterns, paths, plants, "
+    "creatures, weather, hidden corners. The world feels lived-in and "
+    "breathing. Atmospheric depth, painterly background art quality. "
+    # Дети — обычные пропорции, не куклы.
+    "Any human child is rendered with natural proportions and "
+    "natural-sized eyes — NOT chibi, NOT kawaii, NOT moe, NOT big-eyed "
+    "anime doll. Subtle real expression. "
+    # Что не допускается стилистически.
+    "NO Disney stylization, NO Western cartoon mascot look, NO 3D "
+    "render, NO modern manga big-eye style, NO digital airbrush, NO HDR. "
     "ORIGINAL characters only — do NOT depict named characters or "
     "creatures from any specific film. No copyrighted mascots. "
     "NO mice or rabbits in clothing as main character. "
     "NO TEXT, no letters, no captions in frame. "
-    # Safety-блок — это детские сказки. Не допускаем ничего что не
-    # пройдёт глазами родителя.
+    # Safety-блок — это детские сказки.
     "STRICTLY for children's bedtime book, fully family-safe and "
     "age-appropriate. NO sexualization of any kind, NO suggestive poses, "
     "NO bare skin beyond hands and face, NO tight or revealing clothing. "
     "Children fully dressed in modest simple clothes. NO violence, "
-    "NO weapons, NO scary monsters, NO dark themes. Innocent and warm, "
+    "NO weapons, NO scary monsters, NO dark themes. Wonder and warmth, "
     "like a picture book for a 6-year-old."
 )
 
@@ -527,56 +531,72 @@ def pick_hero_visual(child_gender: str | None) -> str:
 # Все варианты держат общую ДНК (см. _COMMON_DNA): техника, палитра,
 # мультяшность, лето. Но каждый ПУШИТ в свой регистр композиции/плотности.
 IMAGE_STYLE_VARIANTS: dict[str, str] = {
-    # Огромный мир куда хочется нырять — широкий пейзаж с маленькой
-    # фигурой героя где-то в кадре. Имена конкретных фильмов убраны
-    # (май 2026): FLUX буквально подставлял героев из них.
-    "vast_world": (
-        "Sweeping painterly watercolor landscape, wide cinematic shot. "
-        "Rolling green hills, distant village rooftops, soft painted "
-        "clouds, a tiny figure of the hero somewhere in the frame — "
-        "not the center. The world is the star. " + _COMMON_DNA
+    # 1. Лёгкая акварель с тушью на белой бумаге — стиль Квентина Блейка /
+    # Брайана Уайлдсмита. Воздух, белые поля, brush-detail, маленькая
+    # деталь живёт сама.
+    "watercolor_ink": (
+        "Loose watercolor and ink illustration on white paper, "
+        "European children's book style. Generous white space around "
+        "the scene, brush-textured grass and clouds, fine ink linework. "
+        "A surreal little scene — a tiny home built into a hill with "
+        "a smoking chimney, or a creature peeking out somewhere. "
+        "Hand-painted, breathing, alive. " + _COMMON_DNA
     ),
 
-    # Сцена-обзор где живёт целое сообщество.
-    "busy_scene": (
-        "Lively painterly watercolor scene with many small things happening. "
-        "Townspeople going about their day: a baker carrying bread, "
-        "a child chasing a moth, an old man feeding birds, a cat napping "
-        "on a wall. Original characters only. " + _COMMON_DNA
+    # 2. Детальная fantasy-иллюстрация в духе Алана Ли / Брайана Фрауда.
+    # Корявые деревья, обвитые лозами, повозки-домики, лантерны,
+    # сотни мелочей.
+    "detailed_fantasy": (
+        "Richly detailed fantasy storybook illustration, ink and "
+        "watercolor, in the tradition of European fairy-tale art. "
+        "Twisting trees with vines, weathered wooden caravan-houses "
+        "with little windows and lanterns, ornate iron details, "
+        "a horse or small creature in the foreground. Every corner "
+        "has something to discover. " + _COMMON_DNA
     ),
 
-    # Магический момент — лёгкий сюр.
-    "magic_moment": (
-        "Magical surreal moment in painterly watercolor style. The hero "
-        "doing something impossible — flying, floating, standing on "
-        "something tiny, meeting a gentle original magical creature. "
-        "Soft wonder, not threat. " + _COMMON_DNA
+    # 3. Cinematic night — звёздное небо, лунный свет, силуэты деревьев,
+    # лантерны вокруг. Ощущение тёплой ночёвки в волшебном лесу.
+    "cinematic_night": (
+        "Cinematic magical night scene, painterly digital illustration. "
+        "Deep starry sky, a glowing moon through tree silhouettes, a "
+        "warm campfire or lanterns, a tent or wagon glowing from inside. "
+        "Cool blues and warm firelight contrast. Wonder and stillness, "
+        "not scary. " + _COMMON_DNA
     ),
 
-    # Уютный интерьер.
-    "cozy_interior": (
-        "Cozy painterly watercolor interior. Wooden beams, soft natural "
-        "light through a window, kettle on a stove, herbs hanging from "
-        "rafters, books and curiosities on shelves. Warm and lived-in. "
+    # 4. Wide-sky dream — широкое небо во весь кадр, маленькие фигуры
+    # снизу со спины смотрят. Шинкай-style cinematic, но без kawaii-лиц
+    # (мы их не показываем, они со спины или силуэтом).
+    "wide_sky_dream": (
+        "Cinematic wide-sky composition, the hero shown from behind or "
+        "in silhouette looking up at an enormous magical sky — galaxy, "
+        "shooting stars, painted clouds at sunset, aurora. The figure "
+        "is small in the lower frame, the sky takes 70% of the image. "
+        "Faces NOT visible (back view or silhouette only). " + _COMMON_DNA
+    ),
+
+    # 5. Сюрреализм в обычном — невозможное явление живёт обычной
+    # жизнью. Домик-холм, повозка-дом, говорящая луна, кит в саду.
+    "surreal_ordinary": (
+        "A storybook scene where something impossible is happening "
+        "calmly, as if it were ordinary. A whale swimming through "
+        "summer clouds, a house balancing on giant flower stems, a "
+        "moon sitting on a windowsill, a tree growing inside a teacup. "
+        "Soft watercolor, the hero somewhere in the scene, not centered. "
         + _COMMON_DNA
     ),
 
-    # Герой в дороге.
-    "journey": (
-        "The hero traveling through a magical world, painterly watercolor "
-        "style. A winding path, distant mountains, a small vehicle or "
-        "gentle animal companion, lanterns swaying. The journey feels "
-        "calm and full of discovery. " + _COMMON_DNA
-    ),
-
-    # Сцена с героем как медиум-план — герой в действии в обжитом
-    # пространстве, лицо читается, но не портретный крупняк.
-    "character_focus": (
-        "Hand-painted watercolor scene with the hero in clear focus, "
-        "medium shot, not portrait close-up. The hero doing something "
-        "natural — looking at something curious, reaching out, walking. "
-        "Soft watercolor background full of magical living detail "
-        "around them. " + _COMMON_DNA
+    # 6. Обжитой путь — герой движется через сказочный мир, лантерны
+    # вдоль дороги, мелочи быта на каждом шагу, мостик, повозка,
+    # тропа сквозь высокие травы.
+    "rich_journey": (
+        "The hero traveling through a magical world, hand-painted "
+        "watercolor with ink detail. A winding path full of small "
+        "discoveries: hanging lanterns, mossy stones with hidden faces, "
+        "a tiny door in a tree trunk, a mailbox by the road, lost "
+        "creatures going home. The journey is calm and full of details "
+        "to find. " + _COMMON_DNA
     ),
 }
 
