@@ -488,14 +488,16 @@ _COMMON_DNA = (
     "Any human child is rendered with natural proportions and "
     "natural-sized eyes — NOT chibi, NOT kawaii, NOT moe, NOT big-eyed "
     "anime doll. Subtle painted expression. "
-    # ─── Авторские права + правило для мышей. ───
+    # ─── Авторские права + правило про животных. ───
     "ORIGINAL characters only — do NOT depict named characters from "
-    "any specific film. Mice, rats, hedgehogs, rabbits, voles and other "
-    "small creatures MAY appear as background inhabitants of the world "
-    "(unclothed or with a tiny apron only), but the MAIN HERO of the "
-    "scene must NEVER be a clothed mouse or clothed rabbit — the main "
-    "hero is either a human child or a magical creature (fairy, spirit, "
-    "elf, small dragon). NO copyrighted mascots. "
+    "any specific film. NO copyrighted mascots. "
+    "The MAIN HERO described in the Hero block above MUST be clearly "
+    "visible in the image, performing the action from the Subject "
+    "line. Without that hero present, the image is wrong. "
+    "Mice, rats, hedgehogs, rabbits, voles MAY appear ONLY as tiny "
+    "background inhabitants in a corner of the frame (not centered, "
+    "not large, never as the visual subject). NEVER replace the main "
+    "hero with a rabbit or mouse. Avoid two-rabbits-in-flowers cliché. "
     "NO TEXT, no letters, no captions in frame. "
     # ─── Safety-блок — это детские сказки. ───
     "STRICTLY for children's bedtime book, fully family-safe and "

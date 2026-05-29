@@ -111,34 +111,41 @@ async def generate_cover(
     # Сцена-описание идёт как «Сцена: <текст>» после стиля. Это контекст
     # происходящего, не команда «нарисуй именно это» — финальную композицию
     # художник выбирает сам.
-    # Склейка: style + hero + scene. Hero идёт ПОСЛЕ style — он
-    # перебивает дефолтные тяги модели в Brambly-Hedge мышей.
-    # Scene — последней, она про конкретный момент мира.
+    # Порядок склейки: SCENE → HERO → STYLE+DNA. Раньше было наоборот
+    # (STYLE → HERO → SCENE), и сцена тонула в 2.6k char DNA-шума —
+    # FLUX игнорировал что в ней написано и рисовал «что-то Brambly».
+    # Diffusion-модели дают больше веса первым токенам — кладём сюда
+    # самое важное (что именно происходит в кадре).
     scene_hint = (scene_description or "").strip()
-    # Бюджет model-aware: Recraft Direct ограничивает prompt ~980 char,
-    # FLUX-pro/dev и Gemini Imagen — гораздо мягче (5000+). Под Recraft
-    # держим жёсткий лимит, иначе scene дропается и три картинки сольются.
     hero_block = (hero_visual or "").strip()
     image_model = (config.image_model or "").strip().lower()
-    # Recraft Direct API режет prompt по 980 char — для него держим жёсткий
-    # лимит. FLUX-pro / Gemini Imagen легко держат 5000+ символов; нам нужно
-    # больше, потому что _COMMON_DNA сильно вырос (anti-mouse + premium-
-    # watercolor + safety = ~2.6k один).
+    # Recraft Direct API режет prompt по 980 char — там оставляем
+    # старый порядок (стиль первым) потому что бюджета мало. FLUX-pro
+    # / Gemini Imagen легко держат 5000+ — туда кладём SCENE-first.
     total_budget = 975 if image_model == "recraft-v3" else 5000
-    fixed_overhead = len(style_prompt) + len(hero_block) + len("Scene: ") + 4
-    budget_for_scene = total_budget - fixed_overhead
 
-    parts = [style_prompt]
+    parts: list[str] = []
+    if scene_hint:
+        if image_model != "recraft-v3":
+            parts.append(
+                f"Subject of this image: {scene_hint}. The image MUST "
+                f"show this exact event happening, with the hero clearly "
+                f"visible doing the described action."
+            )
     if hero_block:
         parts.append(hero_block)
-    if scene_hint and budget_for_scene > 5:
-        if len(scene_hint) > budget_for_scene:
-            cut = scene_hint[: budget_for_scene - 1].rstrip()
-            space = cut.rfind(" ")
-            if space > budget_for_scene * 0.6:
-                cut = cut[:space]
-            scene_hint = cut + "…"
-        parts.append(f"Scene: {scene_hint}")
+    parts.append(style_prompt)
+    # Recraft-legacy: сцену докладываем в конец (старое поведение)
+    if scene_hint and image_model == "recraft-v3":
+        budget_for_scene = total_budget - sum(len(p) for p in parts) - len("Scene: ") - 4
+        if budget_for_scene > 5:
+            if len(scene_hint) > budget_for_scene:
+                cut = scene_hint[: budget_for_scene - 1].rstrip()
+                space = cut.rfind(" ")
+                if space > budget_for_scene * 0.6:
+                    cut = cut[:space]
+                scene_hint = cut + "…"
+            parts.append(f"Scene: {scene_hint}")
     prompt = "\n\n".join(parts)
     # Логируем хвост prompt'а (последние 120 char) — там лежит scene hint
     # после стиля. Помогает увидеть, что РЕАЛЬНО попадает в Recraft:
