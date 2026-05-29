@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 async def main() -> int:
     from src.services.image import generate_three_illustrations
 
-    # Тестовая сказка: маленький мальчик встречает дракончика.
-    # Три РАЗНЫЕ сцены по местам и действиям — проверка что стили
-    # дают разные композиции при едином техническом языке.
+    # Тестовая сказка: мальчик и дракончик. Сцены РАЗНЫЕ по местам/
+    # действиям, в climax намеренно конкретное существо (дракон) —
+    # проверка что FLUX не подменит на «кита из стиля».
     scenes = {
-        "opening": "The boy walks out of his hilltop home in the morning",
-        "climax": "The boy meets a small dragon cub beside a sunlit pond",
-        "ending": "The boy and the dragon wave to friends from a flower hill",
+        "opening": "The boy reads a book on the doorstep of his hilltop home",
+        "climax": "The boy meets a small green dragon cub beside a sunlit pond",
+        "ending": "The boy waves goodbye from a wooden bridge over a stream",
     }
 
     out_dir = Path("cache/test")
