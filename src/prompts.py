@@ -550,24 +550,24 @@ _HERO_VISUAL_VARIANTS = {
 def pick_hero_visual(child_gender: str | None) -> str:
     """Возвращает строку-описание главного героя для image-prompt.
 
-    Ротация:
-      • 65% — человеческий ребёнок (мальчик/девочка по child_gender).
-      • 35% — волшебное существо (фея/дух/дракончик/эльф).
-      • 0% — антропоморфный зверь в одежде (мышь, зайка). Эти теперь
-        только побочные жители мира, не центральные герои.
+    Если child_gender известен (male/female) — ВСЕГДА возвращаем
+    человеческого ребёнка соответствующего пола. Это правильно для
+    основного флоу: ребёнок Тимоша не должен в одной картинке
+    превратиться в эльфа.
 
-    Если child_gender = None или неизвестный — рандом из всех вариантов
-    с тем же распределением, но boy/girl выбираются 50/50.
+    Если gender = None (например, channel-пост или legacy без gender)
+    — рандомим: 60% boy/girl 50/50, 40% магическое существо (фея,
+    дух, дракончик, эльф). Магические креатуры в этом флоу полезны
+    для variety без привязки к конкретному ребёнку.
     """
     import random as _random
-    r = _random.random()
-    if r < 0.65:
-        if child_gender == "female":
-            return _HERO_VISUAL_VARIANTS["girl"]
-        if child_gender == "male":
-            return _HERO_VISUAL_VARIANTS["boy"]
+    if child_gender == "female":
+        return _HERO_VISUAL_VARIANTS["girl"]
+    if child_gender == "male":
+        return _HERO_VISUAL_VARIANTS["boy"]
+    # gender неизвестен — рандомим
+    if _random.random() < 0.6:
         return _HERO_VISUAL_VARIANTS[_random.choice(("boy", "girl"))]
-    # Волшебное существо
     return _HERO_VISUAL_VARIANTS[
         _random.choice(("fairy", "spirit", "dragon_cub", "elf"))
     ]
@@ -608,21 +608,28 @@ IMAGE_STYLE_VARIANTS: dict[str, str] = {
         + _COMMON_DNA
     ),
 
-    # 3. Уютный интерьер / уголок — стены, окно, мелочи быта.
-    "cozy_corner": (
-        "Cozy storybook interior or sheltered corner of the world. "
-        "Walls, beams, shelves, a window onto something magical "
-        "outside, small belongings, painted details everywhere. "
-        "Warm dappled light from one direction. "
+    # 3. Кадрировано близко — что бы ни было в сцене, оно занимает
+    # большую часть кадра, окружено плотной ботанической рамкой
+    # (вне зависимости от того, интерьер это или улица).
+    "framed_close": (
+        "The Scene event is framed tightly — the main subject from the "
+        "Scene takes up most of the frame, surrounded by a dense "
+        "decorative border of leaves, flowers and small details. "
+        "Whatever place the Scene describes (interior, outdoors, sky), "
+        "render that place faithfully — this style only controls the "
+        "framing density, not the location. "
         + _COMMON_DNA
     ),
 
-    # 4. Тропа / движение — герой идёт через мир, обстановка вокруг.
-    "along_the_path": (
-        "The hero traveling along a path through the magical world. "
-        "Trees, stones, plants, small inhabitants on either side of "
-        "the path, something curious up ahead or just behind. The "
-        "journey itself is the subject. "
+    # 4. Кадрировано асимметрично — герой/событие в одной части кадра,
+    # в другой что-то параллельное живёт своей жизнью. Не диктует место.
+    "asymmetric": (
+        "The Scene event is placed asymmetrically — for example, the "
+        "hero on one side of the frame, with something else interesting "
+        "happening on the opposite side (a creature, an open window, "
+        "a passing visitor, a small magical detail). Whatever place the "
+        "Scene describes, render that place faithfully — this style "
+        "only controls composition, not location. "
         + _COMMON_DNA
     ),
 
