@@ -433,11 +433,20 @@ HERO_QUICK_PICKS: dict[str, str] = {
 _COMMON_DNA = (
     # Главное — сюрреалистичный богатый внутренний мир, не «милый портрет».
     "Surreal storybook scene with a rich inner world — something "
-    "impossible living an ordinary life. Wide cinematic composition, "
-    "the hero is part of the world, NOT a portrait close-up. Lots of "
-    "small living details to discover: lanterns, paths, plants, "
-    "creatures, weather, hidden corners. The world feels lived-in and "
-    "breathing. Atmospheric depth, painterly background art quality. "
+    "impossible living an ordinary life. Wide composition, the hero "
+    "is part of the world, NOT a portrait close-up. Lots of small "
+    "living details to discover: lanterns, paths, plants, creatures, "
+    "weather, hidden corners. The world feels lived-in and breathing. "
+    # Дневное тёплое освещение — как было в нашем прежнем стиле.
+    "DAYTIME scene, warm summer light, golden sunshine through foliage, "
+    "soft blue sky with painted clouds. Optional golden hour for warmer "
+    "feel. NO nighttime, NO dark navy palette, NO black silhouettes "
+    "against night sky, NO moon scenes. Bright, sunny, joyful colours. "
+    "Lush summer greenery, flowers, gentle painted shadows. "
+    # Hand-drawn painterly feel.
+    "Hand-painted picture-book look, watercolor and ink lines, painterly "
+    "textures. Atmospheric depth, like a classic illustrated children's "
+    "book during daytime. "
     # Дети — обычные пропорции, не куклы.
     "Any human child is rendered with natural proportions and "
     "natural-sized eyes — NOT chibi, NOT kawaii, NOT moe, NOT big-eyed "
@@ -447,7 +456,13 @@ _COMMON_DNA = (
     "render, NO modern manga big-eye style, NO digital airbrush, NO HDR. "
     "ORIGINAL characters only — do NOT depict named characters or "
     "creatures from any specific film. No copyrighted mascots. "
-    "NO mice or rabbits in clothing as main character. "
+    "ABSOLUTELY NO mice, rats, hamsters or rabbits dressed in clothing "
+    "ANYWHERE in the image — not as main character, not as background "
+    "creature, not as side character. NO Brambly Hedge / Beatrix Potter "
+    "/ Victorian children's book mouse aesthetic. If a small creature "
+    "is needed, use a bird, a fox cub, a hedgehog WITHOUT clothes, a "
+    "frog, a butterfly, a small dragon — but NEVER a mouse or rabbit "
+    "in a dress, apron, vest or any clothing. "
     "NO TEXT, no letters, no captions in frame. "
     # Safety-блок — это детские сказки.
     "STRICTLY for children's bedtime book, fully family-safe and "
@@ -530,73 +545,86 @@ def pick_hero_visual(child_gender: str | None) -> str:
 #
 # Все варианты держат общую ДНК (см. _COMMON_DNA): техника, палитра,
 # мультяшность, лето. Но каждый ПУШИТ в свой регистр композиции/плотности.
+# ВО ВСЕХ стилях запрещаем мышей-в-одежде как главного героя или
+# заметную фигуру. FLUX сам тянет в Brambly-Hedge мышек когда видит
+# «cottage / cozy / picture-book / детская сказка». Прописываем явно.
+_NO_MICE = (
+    " ABSOLUTELY NO mice, rats, hamsters or rabbits dressed in clothes "
+    "anywhere in the image, neither as main character nor as background "
+    "creatures. NO Brambly Hedge / Beatrix Potter style mice in dresses."
+)
+
 IMAGE_STYLE_VARIANTS: dict[str, str] = {
     # 1. Лёгкая акварель с тушью на белой бумаге — стиль Квентина Блейка /
-    # Брайана Уайлдсмита. Воздух, белые поля, brush-detail, маленькая
-    # деталь живёт сама.
+    # Брайана Уайлдсмита. Воздух, белые поля, brush-detail.
     "watercolor_ink": (
         "Loose watercolor and ink illustration on white paper, "
-        "European children's book style. Generous white space around "
-        "the scene, brush-textured grass and clouds, fine ink linework. "
-        "A surreal little scene — a tiny home built into a hill with "
-        "a smoking chimney, or a creature peeking out somewhere. "
-        "Hand-painted, breathing, alive. " + _COMMON_DNA
+        "European children's book style, DAYTIME scene with warm summer "
+        "light. Generous white space around the scene, brush-textured "
+        "grass and clouds, fine ink linework. A surreal little scene — "
+        "a tiny home built into a sunlit hill with a smoking chimney, "
+        "or an original creature peeking out somewhere. Hand-painted, "
+        "breathing, alive." + _NO_MICE + " " + _COMMON_DNA
     ),
 
-    # 2. Детальная fantasy-иллюстрация в духе Алана Ли / Брайана Фрауда.
-    # Корявые деревья, обвитые лозами, повозки-домики, лантерны,
-    # сотни мелочей.
+    # 2. Детальная fantasy-иллюстрация в духе Алана Ли / Брайана Фрауда —
+    # но дневная, тёплая, не gothic. Корявые деревья, повозки-домики,
+    # лантерны, сотни мелочей в солнечном свете.
     "detailed_fantasy": (
         "Richly detailed fantasy storybook illustration, ink and "
-        "watercolor, in the tradition of European fairy-tale art. "
-        "Twisting trees with vines, weathered wooden caravan-houses "
-        "with little windows and lanterns, ornate iron details, "
-        "a horse or small creature in the foreground. Every corner "
-        "has something to discover. " + _COMMON_DNA
+        "watercolor, European fairy-tale tradition. DAYTIME, sunshine "
+        "through twisting tree branches, dappled warm light. Weathered "
+        "wooden caravan-houses with little windows and lanterns, ornate "
+        "iron details, an original creature (horse, large bird, small "
+        "dragon, NOT a mouse) in the foreground. Every corner has "
+        "something to discover." + _NO_MICE + " " + _COMMON_DNA
     ),
 
-    # 3. Cinematic night — звёздное небо, лунный свет, силуэты деревьев,
-    # лантерны вокруг. Ощущение тёплой ночёвки в волшебном лесу.
-    "cinematic_night": (
-        "Cinematic magical night scene, painterly digital illustration. "
-        "Deep starry sky, a glowing moon through tree silhouettes, a "
-        "warm campfire or lanterns, a tent or wagon glowing from inside. "
-        "Cool blues and warm firelight contrast. Wonder and stillness, "
-        "not scary. " + _COMMON_DNA
+    # 3. Тёплая дневная сцена с костром / лагерем / уютным ритуалом.
+    # Раньше был cinematic_night — переведён в дневной warm picnic.
+    "warm_gathering": (
+        "Cozy warm gathering scene, hand-painted watercolor, DAYTIME "
+        "in dappled summer light. A blanket on the grass, a kettle, "
+        "a small original creature companion (NOT a mouse), wildflowers "
+        "around. Painted clouds in a soft blue sky. Wonder and stillness, "
+        "warm and bright." + _NO_MICE + " " + _COMMON_DNA
     ),
 
-    # 4. Wide-sky dream — широкое небо во весь кадр, маленькие фигуры
-    # снизу со спины смотрят. Шинкай-style cinematic, но без kawaii-лиц
-    # (мы их не показываем, они со спины или силуэтом).
-    "wide_sky_dream": (
-        "Cinematic wide-sky composition, the hero shown from behind or "
-        "in silhouette looking up at an enormous magical sky — galaxy, "
-        "shooting stars, painted clouds at sunset, aurora. The figure "
-        "is small in the lower frame, the sky takes 70% of the image. "
-        "Faces NOT visible (back view or silhouette only). " + _COMMON_DNA
+    # 4. Wide-sky daydream — широкое ДНЕВНОЕ небо с облаками, герой
+    # снизу со спины смотрит. Раньше было звёздное небо/закат — теперь
+    # летнее дневное небо с волшебной деталью.
+    "wide_sky_daydream": (
+        "Wide-sky composition, the hero shown from behind or in soft "
+        "silhouette looking up at an enormous DAYTIME summer sky — "
+        "huge painted cumulus clouds, a soaring bird, a tiny floating "
+        "island or whale in clouds. The figure is small in the lower "
+        "frame, the sky takes 70% of the image. Bright warm light. "
+        "Faces NOT visible (back view or soft silhouette only)."
+        + _NO_MICE + " " + _COMMON_DNA
     ),
 
-    # 5. Сюрреализм в обычном — невозможное явление живёт обычной
-    # жизнью. Домик-холм, повозка-дом, говорящая луна, кит в саду.
+    # 5. Сюрреализм в обычном — невозможное живёт обычной жизнью.
+    # Дневной свет.
     "surreal_ordinary": (
-        "A storybook scene where something impossible is happening "
-        "calmly, as if it were ordinary. A whale swimming through "
-        "summer clouds, a house balancing on giant flower stems, a "
-        "moon sitting on a windowsill, a tree growing inside a teacup. "
-        "Soft watercolor, the hero somewhere in the scene, not centered. "
-        + _COMMON_DNA
+        "A storybook scene where something impossible happens calmly, "
+        "as if ordinary. DAYTIME, warm sunlight. A whale swimming "
+        "through summer clouds, a house balancing on giant flower "
+        "stems, a giant teacup with a tree growing inside, a door "
+        "in mid-air with summer light pouring through. Soft watercolor, "
+        "the hero somewhere in the scene, not centered."
+        + _NO_MICE + " " + _COMMON_DNA
     ),
 
-    # 6. Обжитой путь — герой движется через сказочный мир, лантерны
-    # вдоль дороги, мелочи быта на каждом шагу, мостик, повозка,
-    # тропа сквозь высокие травы.
+    # 6. Обжитой путь — герой движется через сказочный мир днём,
+    # тёплый свет, лантерны на тропе, мелочи быта.
     "rich_journey": (
         "The hero traveling through a magical world, hand-painted "
-        "watercolor with ink detail. A winding path full of small "
-        "discoveries: hanging lanterns, mossy stones with hidden faces, "
-        "a tiny door in a tree trunk, a mailbox by the road, lost "
-        "creatures going home. The journey is calm and full of details "
-        "to find. " + _COMMON_DNA
+        "watercolor with ink detail, DAYTIME with warm summer light. "
+        "A winding sunlit path full of small discoveries: hanging "
+        "lanterns swaying, mossy stones with hidden faces, a tiny "
+        "door in a tree trunk, a mailbox by the road, original little "
+        "creatures going home. Calm and full of details to find."
+        + _NO_MICE + " " + _COMMON_DNA
     ),
 }
 
