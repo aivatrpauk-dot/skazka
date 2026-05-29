@@ -120,7 +120,11 @@ async def generate_cover(
     # держим жёсткий лимит, иначе scene дропается и три картинки сольются.
     hero_block = (hero_visual or "").strip()
     image_model = (config.image_model or "").strip().lower()
-    total_budget = 975 if image_model == "recraft-v3" else 2400
+    # Recraft Direct API режет prompt по 980 char — для него держим жёсткий
+    # лимит. FLUX-pro / Gemini Imagen легко держат 5000+ символов; нам нужно
+    # больше, потому что _COMMON_DNA сильно вырос (anti-mouse + premium-
+    # watercolor + safety = ~2.6k один).
+    total_budget = 975 if image_model == "recraft-v3" else 5000
     fixed_overhead = len(style_prompt) + len(hero_block) + len("Scene: ") + 4
     budget_for_scene = total_budget - fixed_overhead
 

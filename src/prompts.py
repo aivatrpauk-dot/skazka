@@ -431,29 +431,45 @@ HERO_QUICK_PICKS: dict[str, str] = {
 # — Без конкретных what-to-draw мотивов — иначе Recraft буквально
 #   натычет «fireflies, moons, lanterns» в каждую картинку.
 _COMMON_DNA = (
-    # Главное — сюрреалистичный богатый внутренний мир, не «милый портрет».
+    # ─── ТЕХНИКА: премиальная книжная акварель ───
+    # Это ключевой слой. Хочется передать ткань Уайлдсмита / Дюлака /
+    # Билибина / Ломаева — рисованную, тёплую, многослойную, дорогую
+    # на ощупь. Перечислены художники-пейзажисты/иллюстраторы без
+    # узнаваемых мифологических персонажей, чтобы FLUX не подставил
+    # сюда конкретных героев.
+    "Premium hand-painted children's book illustration in the classic "
+    "European tradition, in the technical spirit of Brian Wildsmith, "
+    "Edmund Dulac, Ivan Bilibin, Anton Lomaev, Gennady Spirin. "
+    "Traditional watercolor and india ink on cream-toned textured paper. "
+    "Real watercolor wash, visible brush strokes, fine ink linework over "
+    "color, layered washes, soft pigment bleeds at edges. The texture "
+    "of physical paper visible. Hand-mixed earth-tone palette — warm "
+    "ochre, sienna, soft umber, warm green foliage, golden yellow, "
+    "soft cream, gentle sky blue. Rich and warm, premium printed-book "
+    "feel, not flat. "
+    # ─── СЮЖЕТНЫЙ СЛОЙ: сюрреализм + богатый внутренний мир ───
     "Surreal storybook scene with a rich inner world — something "
     "impossible living an ordinary life. Wide composition, the hero "
     "is part of the world, NOT a portrait close-up. Lots of small "
     "living details to discover: lanterns, paths, plants, creatures, "
     "weather, hidden corners. The world feels lived-in and breathing. "
-    # Дневное тёплое освещение — как было в нашем прежнем стиле.
+    # ─── СВЕТ И ВРЕМЯ СУТОК: дневной тёплый ───
     "DAYTIME scene, warm summer light, golden sunshine through foliage, "
-    "soft blue sky with painted clouds. Optional golden hour for warmer "
-    "feel. NO nighttime, NO dark navy palette, NO black silhouettes "
-    "against night sky, NO moon scenes. Bright, sunny, joyful colours. "
+    "soft sky with painted clouds. Optional golden hour for warmer feel. "
+    "NO nighttime, NO dark navy palette, NO black silhouettes against "
+    "night sky, NO moon scenes. Bright, sunny, joyful warmth. "
     "Lush summer greenery, flowers, gentle painted shadows. "
-    # Hand-drawn painterly feel.
-    "Hand-painted picture-book look, watercolor and ink lines, painterly "
-    "textures. Atmospheric depth, like a classic illustrated children's "
-    "book during daytime. "
-    # Дети — обычные пропорции, не куклы.
+    # ─── Чего НЕ должно быть в технике (anti-style). ───
+    "NO digital airbrush, NO vector flat colors, NO cartoon TV "
+    "animation look, NO comic-book cel-shading, NO anime style, "
+    "NO 3D render, NO photo-realism, NO HDR, NO Disney stylization, "
+    "NO modern children's cartoon look. This must look like a "
+    "physically painted page from a high-end illustrated book. "
+    # ─── Анти-куклы для лиц детей. ───
     "Any human child is rendered with natural proportions and "
     "natural-sized eyes — NOT chibi, NOT kawaii, NOT moe, NOT big-eyed "
-    "anime doll. Subtle real expression. "
-    # Что не допускается стилистически.
-    "NO Disney stylization, NO Western cartoon mascot look, NO 3D "
-    "render, NO modern manga big-eye style, NO digital airbrush, NO HDR. "
+    "anime doll. Subtle painted expression. "
+    # ─── Авторские права + анти-mascot. ───
     "ORIGINAL characters only — do NOT depict named characters or "
     "creatures from any specific film. No copyrighted mascots. "
     "ABSOLUTELY NO mice, rats, hamsters or rabbits dressed in clothing "
@@ -464,7 +480,7 @@ _COMMON_DNA = (
     "frog, a butterfly, a small dragon — but NEVER a mouse or rabbit "
     "in a dress, apron, vest or any clothing. "
     "NO TEXT, no letters, no captions in frame. "
-    # Safety-блок — это детские сказки.
+    # ─── Safety-блок — это детские сказки. ───
     "STRICTLY for children's bedtime book, fully family-safe and "
     "age-appropriate. NO sexualization of any kind, NO suggestive poses, "
     "NO bare skin beyond hands and face, NO tight or revealing clothing. "
