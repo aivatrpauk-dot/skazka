@@ -572,92 +572,79 @@ def pick_hero_visual(child_gender: str | None) -> str:
 # жителями. Новое правило про мышей — в _COMMON_DNA: запрещены ТОЛЬКО
 # как главный герой, как фон-инхабитанты разрешены.
 
+# 6 ВАРИАНТОВ КОМПОЗИЦИИ. Техника одна на всех (см. _COMMON_DNA —
+# детальная Brambly-Hedge-стилистика watercolor+ink). Эти 6 переменных
+# различаются только тем, КАК кадрирована сцена и что в фокусе —
+# чтобы 3 картинки одной книжки не были однотипны.
 IMAGE_STYLE_VARIANTS: dict[str, str] = {
-    # 1. Цветочная арка-дверь в густом саду — Jill Barklem / Inga Moore.
-    # Это эталонная композиция: проём входа, увитый ботаникой, лесенка,
-    # мелкие жители мира, фонарики и звёзды как декор.
-    "botanical_doorway": (
-        "A storybook scene framing a magical doorway, archway or window "
-        "into a hidden home — wooden door with stone steps and railing, "
-        "draped with climbing roses, vines and ivy, surrounded by dense "
-        "flowerbeds. Painted stars and a tiny moon as decorative accents "
-        "in the upper corner. Small inhabitants of the world greeting "
-        "or being greeted near the doorway. Every flower hand-painted, "
-        "every leaf detailed."
-        + " " + _COMMON_DNA
+    # 1. Широкий вид мира сказки — герой одна из многих фигур, дальние
+    # и ближние планы, можно различить много планов сразу.
+    "wide_world": (
+        "Wide storybook view of the world. Multiple planes of depth — "
+        "near foreground, mid-ground with the hero, distant background. "
+        "The hero is one element among many. Several things happening "
+        "in different parts of the frame at once. "
+        + _COMMON_DNA
     ),
 
-    # 2. Детальная fantasy-иллюстрация — Алан Ли / Эррол Ле Кейн.
-    # Корявые деревья, повозки-домики, фонарики, сотни мелочей.
-    "detailed_fantasy": (
-        "Richly detailed fantasy storybook illustration, ink and "
-        "watercolor, European fairy-tale tradition. Warm afternoon "
-        "sunshine through twisting tree branches, dappled light. "
-        "Weathered wooden caravan-houses or treehouses with little "
-        "windows and lanterns, ornate iron details, a kind original "
-        "creature in the foreground. Every corner has something to "
-        "discover, dense decorative detail."
-        + " " + _COMMON_DNA
+    # 2. Средний план — герой и его непосредственное окружение, видны
+    # реакции и взаимодействие, но НЕ портретный крупняк.
+    "mid_action": (
+        "Medium-shot storybook scene. The hero in the middle ground "
+        "doing something — looking, reaching, walking, listening — "
+        "with the world around them filling the frame. Subtle painted "
+        "expression on the face, but face is not the focus. "
+        + _COMMON_DNA
     ),
 
-    # 3. Уютное собрание — герой и маленькие друзья за общим делом
-    # (чаепитие, праздник, читают книгу), окружённое цветами и лантернами.
-    "warm_gathering": (
-        "Cozy warm gathering scene in a dense flower garden — a small "
-        "table with teacups, a basket of fruit or flowers, the hero "
-        "and original tiny companions doing something together, "
-        "surrounded by climbing roses, daisies, butterflies, soft "
-        "painted stars overhead. Warm daylight or soft early evening. "
-        "Detailed, layered, lovingly painted."
-        + " " + _COMMON_DNA
+    # 3. Уютный интерьер / уголок — стены, окно, мелочи быта.
+    "cozy_corner": (
+        "Cozy storybook interior or sheltered corner of the world. "
+        "Walls, beams, shelves, a window onto something magical "
+        "outside, small belongings, painted details everywhere. "
+        "Warm dappled light from one direction. "
+        + _COMMON_DNA
     ),
 
-    # 4. Маленький дом в холме / дереве / гнезде — детальный сюрреализм
-    # «home in unexpected place». Заменил wide_sky_daydream, который
-    # давал пустое небо с одинокой фигуркой.
-    "hidden_home": (
-        "A whimsical tiny home built into an unexpected place — a "
-        "hill with a chimney poking out, a giant tree trunk with "
-        "round windows and a ladder, a hollow inside a giant pumpkin "
-        "or teapot. Smoke from the chimney, washing on a tiny line, "
-        "flower beds in front, the hero exploring or greeting at the "
-        "door. Dense painted botanical detail all around."
-        + " " + _COMMON_DNA
+    # 4. Тропа / движение — герой идёт через мир, обстановка вокруг.
+    "along_the_path": (
+        "The hero traveling along a path through the magical world. "
+        "Trees, stones, plants, small inhabitants on either side of "
+        "the path, something curious up ahead or just behind. The "
+        "journey itself is the subject. "
+        + _COMMON_DNA
     ),
 
-    # 5. Сюрреализм в обычном — невозможное живёт обычной жизнью.
-    # Сохранён, но с акцентом на плотный детальный мир вокруг.
-    "surreal_ordinary": (
-        "A storybook scene where something impossible happens calmly, "
-        "as if ordinary — a whale floating through clouds above a "
-        "garden, a tree growing inside a giant teacup, a stair "
-        "leading into the sky from a flower bed, a door standing alone "
-        "in a meadow. Warm daylight. The hero somewhere in the scene, "
-        "not centered. Densely painted with botanical and storybook "
-        "detail."
-        + " " + _COMMON_DNA
+    # 5. Встреча — герой и другой персонаж в момент диалога / контакта.
+    "encounter": (
+        "An encounter scene — the hero meeting another original "
+        "character (a magical creature, an old wise companion, a "
+        "fellow child, an unexpected visitor). Both present in the "
+        "frame, in a moment of greeting, conversation or wonder. "
+        "Detailed world around them. "
+        + _COMMON_DNA
     ),
 
-    # 6. Обжитой путь — герой движется через сказочный мир,
-    # лантерны, тайные двери, ботаника.
-    "rich_journey": (
-        "The hero walking along a winding sunlit path full of small "
-        "discoveries: hanging lanterns swaying overhead, mossy stones "
-        "with tiny doors, a mailbox by the road covered in flowers, "
-        "small original creatures going about their day along the path, "
-        "a wooden bridge ahead. Warm afternoon light, densely painted, "
-        "every corner alive."
-        + " " + _COMMON_DNA
+    # 6. Сюрреалистическое открытие — невозможное явление, герой
+    # его обнаруживает или находится внутри него.
+    "surreal_moment": (
+        "A surreal moment — something impossible happens calmly, as "
+        "if ordinary. A whale in the clouds, a door standing alone "
+        "in a meadow, a tree growing inside a teacup, stairs leading "
+        "into the sky, a creature of unexpected scale. The hero is "
+        "part of the scene, not centered. "
+        + _COMMON_DNA
     ),
 }
 
 # Для обратной совместимости — алиас на один из вариантов. Реально
 # вызывающие должны выбирать вариант явно (см. generate_three_illustrations
 # с ротацией) или брать random.choice(list(IMAGE_STYLE_VARIANTS.values())).
-# Май 2026: стили переименованы дважды (cozy_interior → watercolor_ink
-# → botanical_doorway). botanical_doorway теперь дефолт-fallback —
-# это эталонная Brambly Hedge композиция с цветочной аркой.
-IMAGE_STYLE_BASE = IMAGE_STYLE_VARIANTS["botanical_doorway"]
+# Май 2026: переименовали ещё раз. 6 стилей теперь — это 6
+# КОМПОЗИЦИЙ (wide_world, mid_action, cozy_corner, along_the_path,
+# encounter, surreal_moment), а техника одинаковая для всех в
+# _COMMON_DNA. wide_world — дефолт-fallback.
+IMAGE_STYLE_BASE = IMAGE_STYLE_VARIANTS["wide_world"]
 
 # Раньше тут был «A child playing with their friend {hero} ...» — это
 # жёстко диктовало модели сцену и шло вразрез с «Compose the scene
