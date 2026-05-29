@@ -456,11 +456,22 @@ _COMMON_DNA = (
     "washed. "
     # ─── СЮЖЕТНЫЙ СЛОЙ: сюрреализм + богатый внутренний мир ───
     "Surreal storybook scene with a rich inner world — something "
-    "impossible living an ordinary life. The hero is one element among "
-    "many in a densely populated little world, NOT a lone figure in "
-    "empty landscape, NOT a portrait close-up. Many small living things "
-    "around: lanterns swaying, paths winding, plants growing, creatures "
-    "going about their day, hidden corners with surprises. "
+    "impossible living an ordinary life. Gentle scale mismatch and "
+    "unexpected combinations are welcome (a giant creature in a small "
+    "place, a tiny thing taking up the whole sky). The hero is one "
+    "element among many in a densely populated little world, NOT a "
+    "lone figure in empty landscape, NOT a portrait close-up. Many "
+    "small living things around: lanterns swaying, paths winding, "
+    "plants growing, creatures going about their day, hidden corners "
+    "with surprises. "
+    # ─── ПРАВИЛО ПРИОРИТЕТА: сцена сказочника > примеры стиля ───
+    "IMPORTANT: render the EXACT event described in the «Scene:» block "
+    "at the end of this prompt. The Scene comes from the story itself "
+    "and must be drawn literally. Do NOT substitute it with random "
+    "examples mentioned earlier — those are stylistic hints, not "
+    "instructions for content. If the Scene mentions a dragon, draw "
+    "a dragon (not a different animal). If it mentions a market, draw "
+    "a market. The Scene is the truth. "
     # ─── СВЕТ: тёплый дневной или мягкий вечерний ───
     "Warm light — daytime golden sunshine through foliage, OR soft early "
     "evening with painted stars decorating a dusk sky. NO dark night, "
@@ -626,13 +637,14 @@ IMAGE_STYLE_VARIANTS: dict[str, str] = {
     ),
 
     # 6. Сюрреалистическое открытие — невозможное явление, герой
-    # его обнаруживает или находится внутри него.
+    # его обнаруживает или находится внутри него. Конкретику события
+    # бери из Scene-блока ниже, не подставляй случайные примеры.
     "surreal_moment": (
-        "A surreal moment — something impossible happens calmly, as "
-        "if ordinary. A whale in the clouds, a door standing alone "
-        "in a meadow, a tree growing inside a teacup, stairs leading "
-        "into the sky, a creature of unexpected scale. The hero is "
-        "part of the scene, not centered. "
+        "A surreal moment — something impossible from the Scene "
+        "description is happening calmly, as if ordinary. Render the "
+        "exact event from the Scene, not a generic substitute. Play "
+        "with scale mismatch and unexpected combinations where the "
+        "scene allows. The hero is part of the world, not centered. "
         + _COMMON_DNA
     ),
 }
